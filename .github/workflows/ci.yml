@@ -72,6 +72,9 @@ jobs:
       - name: Verify MikroORM configuration and PostgreSQL connectivity
         run: bun run db:debug
 
+      - name: Verify migration CLI can inspect pending migrations
+        run: bun run db:migrate:pending
+
   deploy-preview:
     name: Simulate AWS deployment (no changes)
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
