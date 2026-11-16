@@ -13,10 +13,7 @@ if (process.env.NODE_ENV === 'production' && !dbPassword) {
 
 export default defineConfig({
   host: process.env.DB_HOST ?? '127.0.0.1',
-  port: Number.parseInt(
-    process.env.DB_PORT ?? process.env.POSTGRES_PORT ?? '5432',
-    10,
-  ),
+  port: Number.parseInt(process.env.DB_PORT ?? process.env.POSTGRES_PORT ?? '5432', 10),
   dbName: process.env.DB_NAME ?? process.env.POSTGRES_DB ?? 'wagering',
   user: process.env.DB_USER ?? process.env.POSTGRES_USER ?? 'wagering',
   password: dbPassword ?? 'local_dev_only',
