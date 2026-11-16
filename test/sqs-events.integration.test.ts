@@ -22,6 +22,7 @@ let sourceUrl = '';
 let dlqUrl = '';
 let eventsUrl = '';
 let processor: ProcessWager;
+const deferredEvents: Published[] = [];
 const runId = randomUUID().slice(0, 8);
 
 interface Opened {
@@ -77,11 +78,11 @@ async function send(body: string, groupId: string): Promise<void> {
     MessageDeduplicationId: randomUUID(),
   }));
 }
-async function consumeOne(): Promise<void> {
+async function consumeOne(outcome: 'ack' | 'dlq' = 'ack'): Promise<void> {
   for (let i = 0; i < 6; i++) {
     const results = await consumer.runOnce();
     if (results.length) {
-      expect(results).toEqual(['ack']);
+      expect(results).toEqual([outcome]);
       return;
     }
   }
@@ -107,6 +108,13 @@ async function publishWallet(walletId: string, expected: number): Promise<void> 
 }
 async function receiveEvents(walletId: string, expected: number): Promise<Published[]> {
   const found: Published[] = [];
+  for (let i = deferredEvents.length - 1; i >= 0; i--) {
+    const item = deferredEvents[i];
+    if (item?.aggregateId === walletId) {
+      found.push(item);
+      deferredEvents.splice(i, 1);
+    }
+  }
   for (let i = 0; i < 25 && found.length < expected; i++) {
     const batch = await sqs.send(new ReceiveMessageCommand({
       QueueUrl: eventsUrl, WaitTimeSeconds: 1, MaxNumberOfMessages: 10,
@@ -118,6 +126,8 @@ async function receiveEvents(walletId: string, expected: number): Promise<Publis
       if (value.aggregateId === walletId) {
         expect(item.Attributes?.MessageGroupId).toBe(walletId);
         found.push(value);
+      } else {
+        deferredEvents.push(value);
       }
       await sqs.send(new DeleteMessageCommand({
         QueueUrl: eventsUrl, ReceiptHandle: item.ReceiptHandle,
@@ -273,7 +283,7 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
   it('sends malformed JSON to FIFO DLQ and ACKs source, without financial side effects', async () => {
     const group = 'poison-' + randomUUID();
     await send('not-json', group);
-    await consumeOne(); // consumeOne expects ack; poison should DLQ instead.
+    await consumeOne('dlq');
     const messages = await sqs.send(new ReceiveMessageCommand({
       QueueUrl: dlqUrl, WaitTimeSeconds: 1, MaxNumberOfMessages: 1,
     }));
@@ -286,13 +296,18 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     const w = await wallet();
     await processor.process(wager(w));
     expect(await outboxCount(w.walletId)).toBe(2);
-    const claimed = await publisher.claim(50);
-    const mine = claimed.find(item => item.aggregate_id === w.walletId);
-    if (!mine) throw new Error('Missing event claimed for crash simulation');
-    // Crash: no SQS SendMessage and no DB published marker.
-    // Only expire this lease; the new publisher can reclaim the row.
+    const [mine] = await orm.em.execute<Array<{ id: string }>>(
+      `select id from outbox_messages
+       where aggregate_id=?::uuid and published_at is null
+       order by occurred_at,id limit 1`,
+      [w.walletId],
+    );
+    if (!mine) throw new Error('Missing durable event for crash simulation');
+    // Simulate an old publisher dying after claiming but before SQS send.
     await orm.em.execute(
-      'update outbox_messages set claim_expires_at=clock_timestamp() - interval \'1 second\' where id=?::uuid',
+      `update outbox_messages
+       set claimed_by='dead-worker',claim_expires_at=clock_timestamp()-interval '1 second'
+       where id=?::uuid`,
       [mine.id],
     );
     const replacement = new OutboxPublisher(orm.em, sqs, eventsUrl, 'replacement-' + randomUUID());
@@ -305,9 +320,6 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     const again = await replacement.runOnce();
     expect(again.published).toBeGreaterThanOrEqual(0);
     expect(await outboxCount(w.walletId, true)).toBe(2);
-    for (const item of claimed) {
-      if (item.id !== mine.id) await publisher.release(item);
-    }
   }, 90_000);
 
   it('cooperates across three publishers without double-claiming a wallet event', async () => {
