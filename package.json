@@ -19,7 +19,15 @@
     "test:watch": "bun test --watch ./src",
     "test:cov": "bun test --coverage ./src",
     "test:e2e": "bun test ./test",
-    "test:load": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm k6"
+    "test:load": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm k6",
+    "db:debug": "bunx --bun mikro-orm debug --config ./src/mikro-orm.config.ts",
+    "db:migrate:create": "bunx --bun mikro-orm migration:create --config ./src/mikro-orm.config.ts",
+    "db:migrate:up": "bunx --bun mikro-orm migration:up --config ./src/mikro-orm.config.ts",
+    "db:migrate:down": "bunx --bun mikro-orm migration:down --config ./src/mikro-orm.config.ts",
+    "db:migrate:rollback": "bun run db:migrate:down",
+    "db:migrate:pending": "bunx --bun mikro-orm migration:pending --config ./src/mikro-orm.config.ts",
+    "db:migrate:list": "bunx --bun mikro-orm migration:list --config ./src/mikro-orm.config.ts",
+    "db:migrate:check": "bunx --bun mikro-orm migration:check --config ./src/mikro-orm.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
@@ -27,7 +35,12 @@
     "@nestjs/observe": "^0.3.0",
     "@nestjs/platform-express": "^12.4.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "@mikro-orm/core": "7.2.9",
+    "@mikro-orm/decorators": "7.2.9",
+    "@mikro-orm/migrations": "7.2.9",
+    "@mikro-orm/nestjs": "^7.1.0",
+    "@mikro-orm/postgresql": "7.2.9"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
@@ -43,6 +56,7 @@
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "tslib": "^2.8.1",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "@mikro-orm/cli": "7.2.9"
   }
 }

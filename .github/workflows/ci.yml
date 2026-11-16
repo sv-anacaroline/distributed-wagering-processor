@@ -1,0 +1,99 @@
+name: CI and deploy preview
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: persistence-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Validate Bun, NestJS and PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: wagering
+          POSTGRES_USER: wagering
+          POSTGRES_PASSWORD: ci_only_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wagering -d wagering"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: wagering
+      DB_USER: wagering
+      DB_PASSWORD: ci_only_password
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      # Once bun.lock is committed, change to: bun install --frozen-lockfile.
+      - name: Install dependencies with Bun
+        run: bun install
+
+      - name: TypeScript strict typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Unit tests
+        run: bun run test
+
+      - name: E2E tests with PostgreSQL
+        run: bun run test:e2e
+
+      - name: Build NestJS
+        run: bun run build
+
+      - name: Verify MikroORM configuration and PostgreSQL connectivity
+        run: bun run db:debug
+
+      - name: Verify migration CLI can inspect pending migrations
+        run: bun run db:migrate:pending
+
+  deploy-preview:
+    name: Simulate AWS deployment (no changes)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Preview deployment plan
+        run: |
+          echo "DRY RUN ONLY — no AWS credentials, Terraform apply, or kubectl actions."
+          echo "1. Authenticate to AWS with GitHub OIDC (future)"
+          echo "2. terraform init / fmt / validate / plan: infra/terraform/aws (future)"
+          echo "3. Build Bun Docker image, tag by commit SHA and push to ECR (future)"
+          echo "4. Run versioned MikroORM migrations in a single pre-deployment job (future)"
+          echo "5. terraform plan: infra/terraform/eks-app (future)"
+          echo "6. Deploy rolling update to EKS with three replicas (future)"
+          echo "7. Verify /health/ready, /health/live and smoke tests (future)"
+          echo "8. Rollback image/migration only through a reviewed recovery procedure (future)"
+          echo "Commit SHA: ${{ github.sha }}"
