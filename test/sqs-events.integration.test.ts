@@ -1,7 +1,7 @@
 import { beforeAll, afterAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
-  CreateQueueCommand, DeleteMessageCommand, DeleteQueueCommand,
+  ChangeMessageVisibilityCommand, CreateQueueCommand, DeleteMessageCommand, DeleteQueueCommand,
   ReceiveMessageCommand, SendMessageCommand, SQSClient,
 } from '@aws-sdk/client-sqs';
 import { MikroORM } from '@mikro-orm/postgresql';
@@ -321,6 +321,115 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     expect(again.published).toBeGreaterThanOrEqual(0);
     expect(await outboxCount(w.walletId, true)).toBe(2);
   }, 90_000);
+
+  it('retries a failed outbox publication without losing the event or changing the ledger', async () => {
+    const w = await wallet();
+    await processor.process(wager(w));
+    const [row] = await orm.em.execute<Array<{
+      id: string; aggregate_id: string; event_type: string;
+      payload: Record<string, unknown>; occurred_at: Date; attempts: number;
+    }>>(
+      `select id,aggregate_id,event_type,payload,occurred_at,attempts
+       from outbox_messages where aggregate_id=?::uuid
+       order by occurred_at,id limit 1`,
+      [w.walletId],
+    );
+    if (!row) throw new Error('Missing durable event for failed-send test');
+    const claimToken = 'failed-' + randomUUID();
+    await orm.em.execute(
+      `update outbox_messages
+       set claimed_by=?,claim_expires_at=clock_timestamp()+interval '45 seconds'
+       where id=?::uuid`,
+      [claimToken, row.id],
+    );
+    const failingSqs = { send: () => Promise.reject(new Error('simulated SQS outage')) };
+    const failing = new OutboxPublisher(orm.em, failingSqs as never, eventsUrl);
+    expect(await failing.publish({ ...row, claimToken })).toBe(false);
+    const [retry] = await orm.em.execute<Array<{
+      attempts: number; claimed_by: string | null;
+      next_attempt_at: Date | null; published_at: Date | null;
+    }>>(
+      'select attempts,claimed_by,next_attempt_at,published_at from outbox_messages where id=?::uuid',
+      [row.id],
+    );
+    expect(retry?.attempts).toBe(1);
+    expect(retry?.claimed_by).toBeNull();
+    expect(retry?.next_attempt_at).toBeTruthy();
+    expect(retry?.published_at).toBeNull();
+    await orm.em.execute(
+      'update outbox_messages set next_attempt_at=clock_timestamp() where id=?::uuid',
+      [row.id],
+    );
+    await publishWallet(w.walletId, 2);
+    expect(await outboxCount(w.walletId, true)).toBe(2);
+    const events = await receiveEvents(w.walletId, 2);
+    expect(new Set(events.map(x => x.eventId)).size).toBe(2);
+    expect(await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId])).toBe(2);
+  }, 90_000);
+
+  it('dead-letters a replay with the same Inbox message ID but altered financial content', async () => {
+    const w = await wallet();
+    const original = envelope(wager(w));
+    await send(JSON.stringify(original), w.walletId);
+    await consumeOne();
+    const tampered = {
+      ...original,
+      data: { ...original.data, money: { amount: '24.00', currency: 'BRL' } },
+    };
+    await send(JSON.stringify(tampered), w.walletId);
+    await consumeOne('dlq');
+    expect(await outboxCount(w.walletId)).toBe(2);
+    expect(await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId])).toBe(2);
+    const [walletState] = await orm.em.execute<Array<{ balance: string }>>(
+      'select balance::text as balance from wallets where id=?::uuid',
+      [w.walletId],
+    );
+    expect(walletState?.balance).toBe('75.00');
+    const dlq = await sqs.send(new ReceiveMessageCommand({
+      QueueUrl: dlqUrl, MaxNumberOfMessages: 1, WaitTimeSeconds: 1,
+    }));
+    expect(dlq.Messages?.[0]?.Body).toBe(JSON.stringify(tampered));
+    const handle = dlq.Messages?.[0]?.ReceiptHandle;
+    if (!handle) throw new Error('Missing DLQ receipt handle');
+    await sqs.send(new DeleteMessageCommand({ QueueUrl: dlqUrl, ReceiptHandle: handle }));
+  }, 60_000);
+
+  it('redelivers safely when the process commits SQL but crashes before SQS ACK', async () => {
+    const w = await wallet();
+    await send(JSON.stringify(envelope(wager(w))), w.walletId);
+    let receipt = '';
+    const failingAck = {
+      send: async (command: unknown): Promise<unknown> => {
+        if (command instanceof ReceiveMessageCommand) {
+          const result = await sqs.send(command);
+          receipt = result.Messages?.[0]?.ReceiptHandle ?? '';
+          return result;
+        }
+        if (command instanceof DeleteMessageCommand) {
+          throw new Error('simulated crash after PostgreSQL commit');
+        }
+        if (command instanceof SendMessageCommand) return sqs.send(command);
+        throw new Error('Unexpected SQS command in test');
+      },
+    };
+    const crashing = new SqsWagerConsumer(
+      failingAck as never,
+      { incoming: sourceUrl, deadLetter: dlqUrl },
+      processor,
+    );
+    let failed: unknown;
+    try { await crashing.runOnce(); } catch (error: unknown) { failed = error; }
+    expect(failed).toBeInstanceOf(AggregateError);
+    expect(receipt).toBeTruthy();
+    expect(await outboxCount(w.walletId)).toBe(2);
+    expect(await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId])).toBe(2);
+    await sqs.send(new ChangeMessageVisibilityCommand({
+      QueueUrl: sourceUrl, ReceiptHandle: receipt, VisibilityTimeout: 0,
+    }));
+    await consumeOne();
+    expect(await outboxCount(w.walletId)).toBe(2);
+    expect(await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId])).toBe(2);
+  }, 60_000);
 
   it('cooperates across three publishers without double-claiming a wallet event', async () => {
     const wallets = await Promise.all([wallet(), wallet(), wallet()]);
