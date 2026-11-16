@@ -3,8 +3,8 @@ import { InvalidDomainStateError } from './errors.js';
 import { IntegrationEvent, type IntegrationEventProps } from './integration-event.js';
 
 interface TestData {
-  readonly nested: { readonly value: string };
-  readonly items: readonly string[];
+  nested: { value: string };
+  items: string[];
 }
 class TestEvent extends IntegrationEvent<TestData> {
   readonly eventType = 'TestEvent';
@@ -64,6 +64,8 @@ describe('IntegrationEvent', () => {
     expect(() => TestEvent.from({ ...props(), correlationId: '' })).toThrow(InvalidDomainStateError);
     expect(() => TestEvent.from({ ...props(), causationId: '' })).toThrow(InvalidDomainStateError);
     expect(() => TestEvent.from({ ...props(), occurredAt: new Date('invalid') })).toThrow(InvalidDomainStateError);
-    expect(TestEvent.from({ ...props(), causationId: undefined }).toJSON().causationId).toBeUndefined();
+    const { causationId, ...withoutCausation } = props();
+    expect(causationId).toBe('txn-1');
+    expect(TestEvent.from(withoutCausation).toJSON().causationId).toBeUndefined();
   });
 });

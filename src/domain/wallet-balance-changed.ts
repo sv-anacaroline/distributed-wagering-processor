@@ -1,8 +1,8 @@
 import { InvalidDomainStateError } from './errors.js';
 import { IntegrationEvent, type EventContext } from './integration-event.js';
 import type { MoneyProps } from './money.js';
-import { Wallet } from './wallet.js';
-import { WalletLedgerEntry, type LedgerDirection } from './wallet-ledger-entry.js';
+import type { Wallet } from './wallet.js';
+import type { WalletLedgerEntry, LedgerDirection } from './wallet-ledger-entry.js';
 
 export interface WalletBalanceChangedData {
   readonly walletId: string;

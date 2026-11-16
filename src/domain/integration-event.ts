@@ -37,7 +37,7 @@ function frozenCopy<T>(data: T): Readonly<T> {
     }
   };
   freeze(copy);
-  return copy as Readonly<T>;
+  return copy;
 }
 
 /**
@@ -82,7 +82,7 @@ export abstract class IntegrationEvent<T> {
       ...(this.causationId ? { causationId: this.causationId } : {}),
       occurredAt: this._occurredAt.toISOString(),
       version: this.version,
-      data: structuredClone(this.data) as T,
+      data: structuredClone(this.data),
     };
   }
 }

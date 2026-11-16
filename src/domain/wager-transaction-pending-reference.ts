@@ -1,6 +1,6 @@
 import { InvalidTransactionStateError } from './errors.js';
 import { IntegrationEvent, type EventContext } from './integration-event.js';
-import { WagerTransaction, WagerTransactionStatus } from './wager-transaction.js';
+import { WagerTransactionStatus, type WagerTransaction } from './wager-transaction.js';
 
 export interface WagerTransactionPendingReferenceData {
   readonly transactionId: string;

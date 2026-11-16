@@ -4,7 +4,6 @@ import {
   assertNonEmpty,
   assertValidDate,
   CurrencyMismatchError,
-  DomainError,
   InsufficientFundsError,
   InvalidDomainStateError,
   InvalidLedgerEntryError,
@@ -12,10 +11,11 @@ import {
   InvalidReferenceError,
   InvalidTransactionStateError,
 } from './errors.js';
+import type { DomainError, DomainErrorCode } from './errors.js';
 
 describe('domain errors', () => {
   it('exposes stable codes for each error', () => {
-    const cases: Array<[DomainError, string]> = [
+    const cases: Array<[DomainError, DomainErrorCode]> = [
       [new InvalidMoneyError('invalid'), 'INVALID_MONEY'],
       [new CurrencyMismatchError('BRL', 'USD'), 'CURRENCY_MISMATCH'],
       [new InsufficientFundsError(), 'INSUFFICIENT_FUNDS'],

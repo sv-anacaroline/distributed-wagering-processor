@@ -5,7 +5,7 @@ import {
   InvalidReferenceError,
   InvalidTransactionStateError,
 } from './errors.js';
-import { Money } from './money.js';
+import type { Money } from './money.js';
 import { LedgerDirection } from './wallet-ledger-entry.js';
 
 export enum WagerTransactionKind {

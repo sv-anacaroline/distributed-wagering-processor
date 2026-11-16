@@ -5,7 +5,7 @@ import {
   InsufficientFundsError,
   InvalidDomainStateError,
 } from './errors.js';
-import { Money } from './money.js';
+import type { Money } from './money.js';
 import { LedgerDirection, WalletLedgerEntry } from './wallet-ledger-entry.js';
 
 export interface WalletState {

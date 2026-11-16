@@ -4,7 +4,7 @@ import {
   CurrencyMismatchError,
   InvalidLedgerEntryError,
 } from './errors.js';
-import { Money } from './money.js';
+import type { Money } from './money.js';
 
 export enum LedgerDirection {
   Debit = 'DEBIT',

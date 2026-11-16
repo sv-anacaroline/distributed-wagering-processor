@@ -30,7 +30,7 @@ describe('WagerTransactionProcessed', () => {
       occurredAt: '2026-01-02T00:00:00.000Z', version: 1,
       data: {
         transactionId: 't1', providerId: 'provider', walletId: 'w1',
-        kind: 'BET', money: { amount: '1.20', currency: 'BRL' },
+        kind: WagerTransactionKind.Bet, money: { amount: '1.20', currency: 'BRL' },
       },
     });
   });

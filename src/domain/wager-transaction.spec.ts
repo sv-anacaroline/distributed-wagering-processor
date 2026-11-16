@@ -112,7 +112,7 @@ describe('WagerTransaction', () => {
     expect(create(Kind.Win).ledgerDirectionFor()).toBe(LedgerDirection.Credit);
     expect(create(Kind.Loss).ledgerDirectionFor()).toBeNull();
     expect(create(Kind.Loss).affectsBalance()).toBe(false);
-    expect(create(Kind.Win, { referenceExternalTransactionId: 'ext-1' }).ledgerDirectionFor(processedBet())).toBe(LedgerDirection.Credit);
+    expect(create(Kind.Win, { id: 't-win', externalTransactionId: 'ext-win', referenceExternalTransactionId: 'ext-1' }).ledgerDirectionFor(processedBet())).toBe(LedgerDirection.Credit);
   });
 
   it('reverses only processed matching transactions, exactly once per reference in the DB', () => {
@@ -125,9 +125,17 @@ describe('WagerTransaction', () => {
     const reverseBet = referring(Kind.Rollback);
     expect(reverseBet.ledgerDirectionFor(bet)).toBe(LedgerDirection.Credit);
 
-    const win = create(Kind.Win);
+    const win = create(Kind.Win, { id: 't-win', externalTransactionId: 'ext-win' });
     win.markProcessed(undefined, at());
-    expect(referring(Kind.Rollback).ledgerDirectionFor(win)).toThrow; // overwritten below: a reference must match its external ID
+    const rollbackWin = create(Kind.Rollback, {
+      id: 't3', externalTransactionId: 'rollback-win', referenceExternalTransactionId: 'ext-win',
+    });
+    expect(rollbackWin.ledgerDirectionFor(win)).toBe(LedgerDirection.Debit);
+
+    const rollbackRefund = create(Kind.Rollback, {
+      id: 't4', externalTransactionId: 'rollback-refund', referenceExternalTransactionId: 'ext-2',
+    });
+    expect(rollbackRefund.ledgerDirectionFor(refund)).toBe(LedgerDirection.Debit);
   });
 
   it('rejects mismatched, partial or non-processed references', () => {

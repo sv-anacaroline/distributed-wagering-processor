@@ -2,8 +2,8 @@ import { InvalidTransactionStateError } from './errors.js';
 import { IntegrationEvent, type EventContext } from './integration-event.js';
 import type { MoneyProps } from './money.js';
 import {
-  WagerTransaction,
   WagerTransactionStatus,
+  type WagerTransaction,
   type WagerTransactionKind,
 } from './wager-transaction.js';
 

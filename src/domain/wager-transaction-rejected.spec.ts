@@ -33,7 +33,7 @@ describe('WagerTransactionRejected', () => {
       transactionId: 'tx1',
       providerId: 'provider1',
       walletId: 'wallet1',
-      failureCode: 'INSUFFICIENT_FUNDS',
+      failureCode: FailureCode.InsufficientFunds,
     });
     expect(event.toJSON().causationId).toBe('command-1');
   });
