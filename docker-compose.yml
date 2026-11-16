@@ -1,0 +1,116 @@
+name: distributed-wagering-processor
+
+x-app-env: &app-env
+  NODE_ENV: development
+  PORT: "3000"
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: ${POSTGRES_DB:-wagering}
+  DB_USER: ${POSTGRES_USER:-wagering}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_only}
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  SQS_ENDPOINT_URL: http://aws-emulator:4566
+  SQS_WAGER_TRANSACTIONS_QUEUE_NAME: wager-transactions.fifo
+  SQS_WAGER_TRANSACTIONS_DLQ_NAME: wager-transactions-dlq.fifo
+  SQS_WAGER_EVENTS_QUEUE_NAME: wager-events.fifo
+
+services:
+  api:
+    build:
+      context: .
+      target: development
+    init: true
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    volumes:
+      - ./:/app
+      - api_node_modules:/app/node_modules
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      terraform-local:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Compose profile for three app processes: api + two replicas.
+  api-replica:
+    profiles: [distributed]
+    build:
+      context: .
+      target: production
+    init: true
+    environment:
+      <<: *app-env
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      terraform-local:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wagering}
+      POSTGRES_USER: ${POSTGRES_USER:-wagering}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_only}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  # LocalStack: requires an auth token. MiniStack is a token-free alternative.
+  aws-emulator:
+    image: ${AWS_EMULATOR_IMAGE:-localstack/localstack:latest}
+    environment:
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+    ports:
+      - "127.0.0.1:${SQS_PORT:-4566}:4566"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4566/_localstack/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+
+  terraform-local:
+    image: hashicorp/terraform:1.13.5
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - terraform -chdir=/infra init -input=false && terraform -chdir=/infra apply -auto-approve -input=false
+    volumes:
+      - ./infra/terraform/local:/infra:ro
+      - terraform_local_state:/state
+      - terraform_local_plugins:/plugins
+    environment:
+      TF_DATA_DIR: /plugins
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_aws_region: ${AWS_REGION:-us-east-1}
+      TF_VAR_sqs_endpoint: http://aws-emulator:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_EC2_METADATA_DISABLED: "true"
+    depends_on:
+      aws-emulator:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  postgres_data:
+  api_node_modules:
+  terraform_local_state:
+  terraform_local_plugins:
