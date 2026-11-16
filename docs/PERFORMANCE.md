@@ -52,3 +52,7 @@ Ao final, o k6 escreve `performance/results/<cenario>-summary.json` com RPS, qua
 Documentar: commit, versão do k6, perfil Docker/EKS, CPU/RAM, quantidade de réplicas, conectividade, tamanho da base, VUs, estágio, warmup, taxas de erro, métricas de lock e atraso da outbox. O desafio **não exige meta de RPS**.
 
 Os testes financeiros posteriores terão de conferir no PostgreSQL `wallet.balance == ledger reconstituído`, além das métricas HTTP.
+
+## Validação automática no PR
+
+O GitHub Actions executa `k6 inspect` em smoke/load/stress/spike/soak e valida o Compose sem gerar tráfego. Para medir desempenho real, subir a aplicação, executar `bun run test:load:<scenario>` e inspecionar `performance/results/`.

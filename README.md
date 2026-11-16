@@ -150,7 +150,7 @@ bun run test:e2e
 bun run test:cov
 ```
 
-Os PRs para a `master` executam **dois checks independentes**: lint/formatação/TypeScript e testes/coverage/integração PostgreSQL. O deploy continua simulado. Configure ambos como *required checks* em Settings → Rules → Rulesets para bloquear merges com CI falhando.
+Os PRs para a `master` executam **três checks independentes**: lint/formatação/TypeScript, testes/coverage/PostgreSQL e validação dos cenários k6. O deploy continua simulado. Configure ambos como *required checks* em Settings → Rules → Rulesets para bloquear merges com CI falhando.
 
 **Testes usam Bun Test**, compatível com a API de asserções Jest. Não adicionamos um segundo test runner porque Bun 1.x é obrigatório no desafio.
 

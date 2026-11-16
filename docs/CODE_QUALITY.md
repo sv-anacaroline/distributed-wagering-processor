@@ -36,10 +36,11 @@ O desafio exige Bun como executor de testes. O Bun oferece APIs familiares ao Je
 Todo PR para `master` e push em `master` executam:
 - `Lint, format and TypeScript`: Prettier, ESLint type-aware, `tsc --noEmit`.
 - `Unit, E2E, coverage and PostgreSQL`: Bun unit/E2E/coverage, build e inspeção do MikroORM com PostgreSQL 17.
+- `Validate k6 scenario configuration`: `docker compose config` e `k6 inspect` dos cinco cenários, sem executar carga.
 
 A simulação de deploy só ocorre em push na `master`, depois de ambos os jobs bem-sucedidos; não executa `terraform apply`, deploy nem ações AWS.
 
-Para efetivamente **impedir merge com checks falhando**, habilite uma *branch ruleset* para `master` em **Settings → Rules → Rulesets** exigindo os dois nomes de jobs acima. O YAML sozinho inicia os checks, mas não bloqueia o botão de merge.
+Para efetivamente **impedir merge com checks falhando**, habilite uma *branch ruleset* para `master` em **Settings → Rules → Rulesets** exigindo os três nomes de jobs acima. O YAML sozinho inicia os checks, mas não bloqueia o botão de merge.
 
 ## Reprodutibilidade
 
