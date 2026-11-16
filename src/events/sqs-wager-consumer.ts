@@ -127,10 +127,13 @@ export class SqsWagerConsumer {
     const settled = await Promise.allSettled(
       messages.map(message => this.processOne(message, signal)),
     );
-    const failures = settled.filter((item) => item.status === 'rejected');
+    const failures: unknown[] = [];
+    for (const item of settled) {
+      if (item.status === 'rejected') failures.push(item.reason as unknown);
+    }
     if (failures.length) {
       throw new AggregateError(
-        failures.map((item) => item.reason),
+        failures,
         'One or more SQS messages could not be acknowledged or dead-lettered',
       );
     }
