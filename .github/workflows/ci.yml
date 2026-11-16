@@ -12,12 +12,33 @@ permissions:
   contents: read
 
 concurrency:
-  group: persistence-ci-${{ github.workflow }}-${{ github.ref }}
+  group: code-quality-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  lint-and-types:
+    name: Lint, format and TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      # A bun.lock is not yet present. Once generated, enforce --frozen-lockfile.
+      - name: Install dependencies
+        run: bun install
+      - name: Verify formatting
+        run: bun run format:check
+      - name: ESLint with type-aware rules
+        run: bun run lint
+      - name: TypeScript strict typecheck
+        run: bun run typecheck
+
   quality:
-    name: Validate Bun, NestJS and PostgreSQL
+    name: Unit, E2E, coverage and PostgreSQL
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -44,56 +65,41 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
-
-      # Once bun.lock is committed, change to: bun install --frozen-lockfile.
-      - name: Install dependencies with Bun
+      - name: Install dependencies
         run: bun install
-
-      - name: TypeScript strict typecheck
-        run: bun run typecheck
-
-      - name: Lint
-        run: bun run lint
-
       - name: Unit tests
         run: bun run test
-
       - name: E2E tests with PostgreSQL
         run: bun run test:e2e
-
+      - name: Coverage threshold
+        run: bun run test:cov
       - name: Build NestJS
         run: bun run build
-
-      - name: Verify MikroORM configuration and PostgreSQL connectivity
+      - name: Validate MikroORM PostgreSQL connectivity
         run: bun run db:debug
-
-      - name: Verify migration CLI can inspect pending migrations
+      - name: Inspect pending migrations
         run: bun run db:migrate:pending
 
   deploy-preview:
     name: Simulate AWS deployment (no changes)
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: [quality]
+    needs: [lint-and-types, quality]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Preview deployment plan
         run: |
-          echo "DRY RUN ONLY — no AWS credentials, Terraform apply, or kubectl actions."
-          echo "1. Authenticate to AWS with GitHub OIDC (future)"
-          echo "2. terraform init / fmt / validate / plan: infra/terraform/aws (future)"
-          echo "3. Build Bun Docker image, tag by commit SHA and push to ECR (future)"
-          echo "4. Run versioned MikroORM migrations in a single pre-deployment job (future)"
-          echo "5. terraform plan: infra/terraform/eks-app (future)"
-          echo "6. Deploy rolling update to EKS with three replicas (future)"
-          echo "7. Verify /health/ready, /health/live and smoke tests (future)"
-          echo "8. Rollback image/migration only through a reviewed recovery procedure (future)"
-          echo "Commit SHA: ${{ github.sha }}"
+          echo "DRY RUN ONLY — no AWS credentials, Terraform apply or kubectl actions."
+          echo "1. Authenticate to AWS via GitHub OIDC (future)"
+          echo "2. Terraform plan for infra/terraform/aws (future)"
+          echo "3. Build Bun container, push to ECR (future)"
+          echo "4. Run migrations once, before EKS rollout (future)"
+          echo "5. Terraform plan for infra/terraform/eks-app (future)"
+          echo "6. EKS rollout, readiness verification and smoke tests (future)"
+          echo "Commit: ${{ github.sha }}"
