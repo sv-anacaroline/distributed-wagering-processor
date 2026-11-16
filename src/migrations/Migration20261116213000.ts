@@ -119,6 +119,7 @@ export class Migration20261116213000 extends Migration {
       create unique index wager_one_reversal_per_kind
       on wager_transactions(provider_id, reference_external_transaction_id, kind)
       where kind in ('REFUND', 'ROLLBACK')
+      and status in ('PENDING', 'PENDING_REFERENCE', 'PROCESSED')
     `);
   }
 }

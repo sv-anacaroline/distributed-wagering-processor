@@ -4,9 +4,9 @@ import {
   InvalidReferenceError,
   InvalidTransactionStateError,
 } from '../domain/errors.js';
-import { WagerTransaction, WagerTransactionKind, WagerTransactionStatus, FailureCode } from '../domain/wager-transaction.js';
+import { WagerTransactionKind, WagerTransactionStatus, FailureCode, type WagerTransaction } from '../domain/wager-transaction.js';
 import { LedgerDirection, type WalletLedgerEntry } from '../domain/wallet-ledger-entry.js';
-import { Wallet } from '../domain/wallet.js';
+import type { Wallet } from '../domain/wallet.js';
 
 export interface WagerRuleInput {
   readonly transaction: WagerTransaction;

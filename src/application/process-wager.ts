@@ -54,7 +54,7 @@ interface DueReferenceRow {
 
 export class IdempotencyConflictError extends DomainError {
   constructor() {
-    super('INVALID_DOMAIN_STATE', FailureCode.IdempotencyConflict);
+    super('IDEMPOTENCY_CONFLICT', 'Idempotency key or provider transaction ID conflicts with a different payload');
   }
 }
 function domainWallet(row: WalletRow): Wallet {
@@ -220,22 +220,28 @@ export class ProcessWager {
         insert into wager_transactions(
           id, provider_id, external_transaction_id, idempotency_key, payload_hash,
           wallet_id, player_id, round_id, game_id, kind, amount, currency,
-          reference_external_transaction_id, status, failure_code, created_at
+          reference_external_transaction_id, status, failure_code, created_at,
+          response_snapshot
         ) values(
-          ?::uuid, ?, ?, ?, ?, ?::uuid, ?::uuid, ?, ?, ?, ?::numeric, ?, ?, ?, ?, ?
+          ?::uuid, ?, ?, ?, ?, ?::uuid, ?::uuid, ?, ?, ?, ?::numeric, ?, ?, ?, ?, ?, ?::jsonb
         ) on conflict do nothing returning id
       `, [
         tx.id, tx.providerId, tx.externalTransactionId, tx.idempotencyKey, tx.payloadHash,
         tx.walletId, tx.playerId, tx.roundId, tx.gameId, tx.kind,
         tx.money.toJSON().amount, tx.money.currency, tx.referenceExternalTransactionId ?? null,
         tx.status, tx.failureCode ?? null, tx.createdAt,
+        blocked ? JSON.stringify(responseSnapshot(tx, wallet, at)) : null,
       ]);
       if (inserted.length === 0) {
         const collided = await findExisting(em, cmd);
         if (collided) return replay(collided, hash);
         throw new InvalidDomainStateError('Conflicting active financial reversal');
       }
-      if (blocked) return persist(em, tx, wallet, at);
+      if (blocked) {
+        const snapshot = responseSnapshot(tx, wallet, at);
+        await emitResult(em, tx, wallet, at);
+        return snapshot;
+      }
 
       const reference = await findReference(em, tx);
       const hasActiveReversal = await activeReversal(em, tx);

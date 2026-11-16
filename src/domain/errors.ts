@@ -7,7 +7,8 @@ export type DomainErrorCode =
   | 'INVALID_TRANSACTION_STATE'
   | 'INVALID_REFERENCE'
   | 'INVALID_DOMAIN_STATE'
-  | 'ALREADY_PROCESSED';
+  | 'ALREADY_PROCESSED'
+  | 'IDEMPOTENCY_CONFLICT';
 
 export class DomainError extends Error {
   constructor(

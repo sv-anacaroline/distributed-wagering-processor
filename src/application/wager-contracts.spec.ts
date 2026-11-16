@@ -14,7 +14,7 @@ const at = new Date('2026-11-16T20:00:00.000Z');
 describe('WagerCommand idempotency', () => {
   it('hashes the canonical business payload independent of property insertion order', () => {
     const c = command();
-    const reordered = { money: { currency: 'BRL', amount: '25.00' }, ...c };
+    const reordered = { ...c, money: { currency: 'BRL', amount: '25.00' } };
     expect(payloadHash(c)).toBe(payloadHash(reordered));
     expect(payloadHash(c)).toMatch(/^[a-f0-9]{64}$/);
   });

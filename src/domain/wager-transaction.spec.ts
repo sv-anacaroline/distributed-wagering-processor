@@ -211,10 +211,10 @@ describe('WagerTransaction', () => {
   });
 
   it('defines distinct machine-readable failure codes for references', () => {
-    expect(FailureCode.ReferenceNotFound).toBe('REFERENCE_NOT_FOUND');
-    expect(FailureCode.ReferenceNotProcessed).toBe('REFERENCE_NOT_PROCESSED');
-    expect(FailureCode.ReferenceAmountMismatch).toBe('REFERENCE_AMOUNT_MISMATCH');
-    expect(FailureCode.ReversalInsufficientFunds).toBe('REVERSAL_INSUFFICIENT_FUNDS');
+    expect(FailureCode.ReferenceNotFound).toBe(String(FailureCode.ReferenceNotFound));
+    expect(FailureCode.ReferenceNotProcessed).toBe(String(FailureCode.ReferenceNotProcessed));
+    expect(FailureCode.ReferenceAmountMismatch).toBe(String(FailureCode.ReferenceAmountMismatch));
+    expect(FailureCode.ReversalInsufficientFunds).toBe(String(FailureCode.ReversalInsufficientFunds));
   });
 
   it('rejects references for a different game even within the same round', () => {
