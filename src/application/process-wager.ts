@@ -17,6 +17,7 @@ import { OutboxMessage } from '../domain/outbox-message.js';
 import type { IntegrationEvent } from '../domain/integration-event.js';
 import { applyWagerRules } from './wager-rules.js';
 import { initialReferenceRetry, nextReferenceRetry } from './reference-retry.js';
+import { withTransactionRetry } from './transaction-retry.js';
 import {
   payloadHash,
   responseSnapshot,
@@ -125,16 +126,18 @@ async function dbNow(em: EntityManager, wallet: Wallet): Promise<Date> {
   return new Date(row.at);
 }
 async function findExisting(em: EntityManager, cmd: WagerCommand): Promise<WagerRow | undefined> {
-  const [row] = await rows<WagerRow>(
+  const found = await rows<WagerRow>(
     em,
     `
     select * from wager_transactions
     where idempotency_key=? or (provider_id=? and external_transaction_id=?)
-    order by created_at, id limit 1 for update
+    order by id for update
   `,
     [cmd.idempotencyKey, cmd.providerId, cmd.externalTransactionId],
   );
-  return row;
+  // Two distinct existing rows claiming the two identities are always a conflict.
+  if (found.length > 1) throw new IdempotencyConflictError();
+  return found[0];
 }
 function replay(row: WagerRow, hash: string): WagerResult {
   if (row.payload_hash !== hash) throw new IdempotencyConflictError();
@@ -287,10 +290,15 @@ async function persist(
 export class ProcessWager {
   constructor(private readonly em: EntityManager) {}
 
+  /** Each retry uses a fresh EntityManager + SQL transaction after releasing locks. */
+  private async transaction<T>(work: (em: EntityManager) => Promise<T>): Promise<T> {
+    return withTransactionRetry(() => this.em.fork().transactional(work, { clear: true }));
+  }
+
   async process(cmd: WagerCommand): Promise<WagerResult> {
     const money = Money.from(cmd.money);
     const hash = payloadHash(cmd);
-    return this.em.fork().transactional(
+    return this.transaction(
       async (em) => {
         // Lock ordering: wallet first, then wager rows. The retry worker uses the same order.
         const wallet = await lockWallet(em, cmd.walletId);
@@ -372,13 +380,12 @@ export class ProcessWager {
           tx.status === Status.PendingReference ? initialReferenceRetry(at) : undefined,
         );
       },
-      { clear: true },
     );
   }
 
   /** Called by a database-backed scheduler; never reprocesses a terminal row. */
   async retryPending(id: string, walletId: string): Promise<WagerResult | null> {
-    return this.em.fork().transactional(
+    return this.transaction(
       async (em) => {
         const wallet = await lockWallet(em, walletId);
         const [row] = await rows<WagerRow>(
@@ -433,7 +440,6 @@ export class ProcessWager {
         });
         return persist(em, tx, wallet, at, result.ledgerEntry);
       },
-      { clear: true },
     );
   }
 
