@@ -44,8 +44,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     const error = httpError(exception);
+    const original = exception instanceof HttpException ? exception.getResponse() : null;
+    const details = original && typeof original === 'object' && !Array.isArray(original)
+      ? original as Record<string, unknown>
+      : null;
     response.status(error.status).json({
       statusCode: error.status, code: error.code, message: error.message,
+      ...(details?.postgres !== undefined && details.sqs !== undefined
+        ? { postgres: details.postgres, sqs: details.sqs }
+        : {}),
     });
   }
 }
