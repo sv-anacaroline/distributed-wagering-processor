@@ -105,9 +105,15 @@ export class Migration20261116213000 extends Migration {
     this.addSql('drop trigger if exists wager_reference_guard on wager_transactions');
     this.addSql('drop function if exists validate_wager_reference()');
     this.addSql('drop index if exists wager_pending_reference_due_idx');
-    this.addSql('alter table wager_transactions drop constraint if exists wager_resolved_reference_check');
-    this.addSql('alter table wager_transactions drop constraint if exists wager_reference_retry_order');
-    this.addSql('alter table wager_transactions drop constraint if exists wager_pending_retry_fields');
+    this.addSql(
+      'alter table wager_transactions drop constraint if exists wager_resolved_reference_check',
+    );
+    this.addSql(
+      'alter table wager_transactions drop constraint if exists wager_reference_retry_order',
+    );
+    this.addSql(
+      'alter table wager_transactions drop constraint if exists wager_pending_retry_fields',
+    );
     this.addSql(`
       alter table wager_transactions
         drop column if exists reference_retry_attempts,

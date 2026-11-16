@@ -4,7 +4,12 @@ import {
   InvalidReferenceError,
   InvalidTransactionStateError,
 } from '../domain/errors.js';
-import { WagerTransactionKind, WagerTransactionStatus, FailureCode, type WagerTransaction } from '../domain/wager-transaction.js';
+import {
+  WagerTransactionKind,
+  WagerTransactionStatus,
+  FailureCode,
+  type WagerTransaction,
+} from '../domain/wager-transaction.js';
 import { LedgerDirection, type WalletLedgerEntry } from '../domain/wallet-ledger-entry.js';
 import type { Wallet } from '../domain/wallet.js';
 
@@ -86,7 +91,12 @@ export function applyWagerRules(input: WagerRuleInput): WagerRuleResult {
 
   let ledgerEntry: WalletLedgerEntry | undefined;
   if (direction !== null) {
-    const movement = { transactionId: tx.id, ledgerEntryId: input.ledgerEntryId, money: tx.money, at };
+    const movement = {
+      transactionId: tx.id,
+      ledgerEntryId: input.ledgerEntryId,
+      money: tx.money,
+      at,
+    };
     try {
       ledgerEntry =
         direction === LedgerDirection.Debit ? wallet.debit(movement) : wallet.credit(movement);

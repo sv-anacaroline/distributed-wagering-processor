@@ -3,7 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { MikroORM } from '@mikro-orm/postgresql';
 import config from '../src/mikro-orm.config.js';
 import { ProcessWager, IdempotencyConflictError } from '../src/application/process-wager.js';
-import { FailureCode, WagerTransactionKind as Kind, WagerTransactionStatus as Status } from '../src/domain/wager-transaction.js';
+import {
+  FailureCode,
+  WagerTransactionKind as Kind,
+  WagerTransactionStatus as Status,
+} from '../src/domain/wager-transaction.js';
 import type { WagerCommand } from '../src/application/wager-contracts.js';
 
 let orm: MikroORM;
@@ -13,7 +17,9 @@ beforeAll(async () => {
   orm = await MikroORM.init(config);
   processor = new ProcessWager(orm.em);
 });
-afterAll(async () => { await orm.close(true); });
+afterAll(async () => {
+  await orm.close(true);
+});
 
 async function opening(amount = '100.00'): Promise<{ walletId: string; playerId: string }> {
   const walletId = randomUUID();
@@ -21,10 +27,13 @@ async function opening(amount = '100.00'): Promise<{ walletId: string; playerId:
   const txId = randomUUID();
   const ledgerId = randomUUID();
   if (amount === '0.00') {
-    await orm.em.execute(`
+    await orm.em.execute(
+      `
       insert into wallets(id, player_id, currency, balance, version, created_at, updated_at)
       values(?::uuid, ?::uuid, 'BRL', 0, 1, now(), now())
-    `, [walletId, playerId]);
+    `,
+      [walletId, playerId],
+    );
   } else {
     await orm.em.execute(`
       do $block$ begin
@@ -78,7 +87,8 @@ async function count(sql: string, params: unknown[]): Promise<number> {
 }
 async function balance(walletId: string): Promise<{ balance: string; version: number }> {
   const [row] = await orm.em.execute<Array<{ balance: string; version: number }>>(
-    'select balance::text as balance, version from wallets where id=?::uuid', [walletId],
+    'select balance::text as balance, version from wallets where id=?::uuid',
+    [walletId],
   );
   if (!row) throw new Error('Missing test wallet');
   return row;
@@ -97,8 +107,18 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     const replay = await processor.process(original);
     expect(replay).toEqual(first);
     expect((await balance(wallet.walletId)).balance).toBe('100.00');
-    expect(await count('select count(*)::text as count from wallet_ledger_entries where wallet_id=?::uuid', [wallet.walletId])).toBe(3);
-    expect(await count('select count(*)::text as count from outbox_messages where aggregate_id=?::uuid', [wallet.walletId])).toBe(4);
+    expect(
+      await count(
+        'select count(*)::text as count from wallet_ledger_entries where wallet_id=?::uuid',
+        [wallet.walletId],
+      ),
+    ).toBe(3);
+    expect(
+      await count(
+        'select count(*)::text as count from outbox_messages where aggregate_id=?::uuid',
+        [wallet.walletId],
+      ),
+    ).toBe(4);
   });
 
   it('BET with insufficient funds records REJECTED and outbox, without moving saldo', async () => {
@@ -108,8 +128,18 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     expect(result.failureCode).toBe(FailureCode.InsufficientFunds);
     expect(result.walletVersion).toBe(1);
     expect((await balance(wallet.walletId)).balance).toBe('0.00');
-    expect(await count('select count(*)::text as count from wallet_ledger_entries where wallet_id=?::uuid', [wallet.walletId])).toBe(0);
-    expect(await count('select count(*)::text as count from outbox_messages where aggregate_id=?::uuid', [wallet.walletId])).toBe(1);
+    expect(
+      await count(
+        'select count(*)::text as count from wallet_ledger_entries where wallet_id=?::uuid',
+        [wallet.walletId],
+      ),
+    ).toBe(0);
+    expect(
+      await count(
+        'select count(*)::text as count from outbox_messages where aggregate_id=?::uuid',
+        [wallet.walletId],
+      ),
+    ).toBe(1);
   });
 
   it('LOSS records PROCESSED without ledger, wallet balance or version changes', async () => {
@@ -118,7 +148,12 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     expect(result.status).toBe(Status.Processed);
     expect(result.balance.amount).toBe('100.00');
     expect(result.walletVersion).toBe(1);
-    expect(await count('select count(*)::text as count from wallet_ledger_entries where wallet_id=?::uuid', [wallet.walletId])).toBe(1);
+    expect(
+      await count(
+        'select count(*)::text as count from wallet_ledger_entries where wallet_id=?::uuid',
+        [wallet.walletId],
+      ),
+    ).toBe(1);
   });
 
   it('REFUND credits a processed BET and blocks cross-kind ROLLBACK of the same BET', async () => {
@@ -132,9 +167,11 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     expect(returned.status).toBe(Status.Processed);
     expect(returned.balance.amount).toBe('100.00');
 
-    const reversedAgain = await processor.process(wager(wallet, Kind.Rollback, {
-      referenceExternalTransactionId: bet.externalTransactionId,
-    }));
+    const reversedAgain = await processor.process(
+      wager(wallet, Kind.Rollback, {
+        referenceExternalTransactionId: bet.externalTransactionId,
+      }),
+    );
     expect(reversedAgain.status).toBe(Status.Rejected);
     expect(reversedAgain.failureCode).toBe(FailureCode.AlreadyReversed);
     expect((await balance(wallet.walletId)).balance).toBe('100.00');
@@ -154,9 +191,11 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     const win2 = wager(wallet2, Kind.Win);
     await processor.process(win2);
     await processor.process(wager(wallet2, Kind.Bet));
-    const rejected = await processor.process(wager(wallet2, Kind.Rollback, {
-      referenceExternalTransactionId: win2.externalTransactionId,
-    }));
+    const rejected = await processor.process(
+      wager(wallet2, Kind.Rollback, {
+        referenceExternalTransactionId: win2.externalTransactionId,
+      }),
+    );
     expect(rejected.status).toBe(Status.Rejected);
     expect(rejected.failureCode).toBe(FailureCode.ReversalInsufficientFunds);
     expect((await balance(wallet2.walletId)).balance).toBe('0.00');
@@ -186,11 +225,14 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     expect(pending.status).toBe(Status.PendingReference);
     expect(pending.walletVersion).toBe(1);
     await processor.process(bet);
-    await orm.em.execute(`update wager_transactions
+    await orm.em.execute(
+      `update wager_transactions
       set reference_next_attempt_at=clock_timestamp()
-      where id=?::uuid`, [pending.transactionId]);
+      where id=?::uuid`,
+      [pending.transactionId],
+    );
     const due = await processor.dueReferences();
-    expect(due.some(item => item.id === pending.transactionId)).toBe(true);
+    expect(due.some((item) => item.id === pending.transactionId)).toBe(true);
     const result = await processor.retryPending(pending.transactionId, wallet.walletId);
     expect(result?.status).toBe(Status.Processed);
     expect(result?.balance.amount).toBe('100.00');
@@ -200,18 +242,28 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
 
   it('expires absent references with REFERENCE_NOT_FOUND and a durable rejection event', async () => {
     const wallet = await opening();
-    const pending = await processor.process(wager(wallet, Kind.Refund, {
-      referenceExternalTransactionId: 'never-arrived',
-    }));
-    await orm.em.execute(`update wager_transactions
+    const pending = await processor.process(
+      wager(wallet, Kind.Refund, {
+        referenceExternalTransactionId: 'never-arrived',
+      }),
+    );
+    await orm.em.execute(
+      `update wager_transactions
       set reference_expires_at=clock_timestamp(),
           reference_next_attempt_at=clock_timestamp()
-      where id=?::uuid`, [pending.transactionId]);
+      where id=?::uuid`,
+      [pending.transactionId],
+    );
     const completed = await processor.retryPending(pending.transactionId, wallet.walletId);
     expect(completed?.status).toBe(Status.Rejected);
     expect(completed?.failureCode).toBe(FailureCode.ReferenceNotFound);
     expect((await balance(wallet.walletId)).balance).toBe('100.00');
-    expect(await count('select count(*)::text as count from outbox_messages where aggregate_id=?::uuid', [wallet.walletId])).toBe(2);
+    expect(
+      await count(
+        'select count(*)::text as count from outbox_messages where aggregate_id=?::uuid',
+        [wallet.walletId],
+      ),
+    ).toBe(2);
   });
 
   it('serializes fifty duplicate BET requests into one ledger entry', async () => {
@@ -222,8 +274,13 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     if (!original) throw new Error('Expected a processed request');
     for (const result of results) expect(result).toEqual(original);
     expect((await balance(wallet.walletId)).balance).toBe('75.00');
-    expect(await count(`select count(*)::text as count from wallet_ledger_entries
-      where wallet_id=?::uuid`, [wallet.walletId])).toBe(2);
+    expect(
+      await count(
+        `select count(*)::text as count from wallet_ledger_entries
+      where wallet_id=?::uuid`,
+        [wallet.walletId],
+      ),
+    ).toBe(2);
   });
 
   it('lets only one concurrent BET of 80.00 debit wallet with balance 100.00', async () => {
@@ -231,8 +288,10 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     const bet1 = wager(wallet, Kind.Bet, { money: { amount: '80.00', currency: 'BRL' } });
     const bet2 = wager(wallet, Kind.Bet, { money: { amount: '80.00', currency: 'BRL' } });
     const results = await Promise.all([processor.process(bet1), processor.process(bet2)]);
-    expect(results.filter(result => result.status === Status.Processed).length).toBe(1);
-    expect(results.filter(result => result.failureCode === FailureCode.InsufficientFunds).length).toBe(1);
+    expect(results.filter((result) => result.status === Status.Processed).length).toBe(1);
+    expect(
+      results.filter((result) => result.failureCode === FailureCode.InsufficientFunds).length,
+    ).toBe(1);
     expect(await balance(wallet.walletId)).toEqual({ balance: '20.00', version: 2 });
   });
 });

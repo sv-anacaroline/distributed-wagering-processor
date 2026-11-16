@@ -19,7 +19,9 @@ describe('persisted PENDING_REFERENCE retry policy', () => {
       const decision = nextReferenceRetry(state, at);
       expect(decision.expired).toBe(false);
       expect(decision.state.attempts).toBe(i);
-      expect(decision.state.nextAttemptAt.getTime() - at.getTime()).toBeLessThanOrEqual(15 * 60_000);
+      expect(decision.state.nextAttemptAt.getTime() - at.getTime()).toBeLessThanOrEqual(
+        15 * 60_000,
+      );
       state = decision.state;
     }
   });
@@ -27,7 +29,9 @@ describe('persisted PENDING_REFERENCE retry policy', () => {
   it('does not retry before due and prevents invalid counters', () => {
     const state = initialReferenceRetry(now);
     expect(() => nextReferenceRetry(state, now)).toThrow(InvalidDomainStateError);
-    expect(() => nextReferenceRetry({ ...state, attempts: -1 }, state.nextAttemptAt)).toThrow(InvalidDomainStateError);
+    expect(() => nextReferenceRetry({ ...state, attempts: -1 }, state.nextAttemptAt)).toThrow(
+      InvalidDomainStateError,
+    );
   });
 
   it('terminates at TTL and never schedules beyond expiry', () => {

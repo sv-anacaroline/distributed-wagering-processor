@@ -4,15 +4,23 @@ import { MikroORM } from '@mikro-orm/postgresql';
 import config from '../src/mikro-orm.config.js';
 
 let orm: MikroORM;
-beforeAll(async () => { orm = await MikroORM.init(config); });
-afterAll(async () => { await orm.close(true); });
+beforeAll(async () => {
+  orm = await MikroORM.init(config);
+});
+afterAll(async () => {
+  await orm.close(true);
+});
 
 async function statement(sql: string): Promise<void> {
   await orm.em.execute(sql);
 }
 async function fails(sql: string): Promise<void> {
   let failed = false;
-  try { await statement(sql); } catch { failed = true; }
+  try {
+    await statement(sql);
+  } catch {
+    failed = true;
+  }
   expect(failed).toBe(true);
 }
 async function setup(): Promise<{ wallet: string; player: string }> {
@@ -23,8 +31,12 @@ async function setup(): Promise<{ wallet: string; player: string }> {
   return { wallet, player };
 }
 async function insertWager(
-  ctx: { wallet: string; player: string }, external: string, kind: string,
-  status: string, reference?: string, errorCode?: string,
+  ctx: { wallet: string; player: string },
+  external: string,
+  kind: string,
+  status: string,
+  reference?: string,
+  errorCode?: string,
 ): Promise<void> {
   const id = randomUUID();
   await statement(`
