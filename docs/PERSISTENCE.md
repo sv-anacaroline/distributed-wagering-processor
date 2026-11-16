@@ -8,7 +8,7 @@
 - Migrations PostgreSQL usam transações (`transactional: true`, `allOrNothing: true`) e não desabilitam constraints de foreign key.
 - O gerenciamento de migrations **não acontece no bootstrap** da API, para evitar corrida entre réplicas EKS.
 - Ao criar uma migration, implementar/revisar `up()` **e** `down()`, inspecionando SQL e incluindo constraints de unicidade, imutabilidade e saldo não negativo quando as entidades forem modeladas.
-- Esquema do banco ainda está vazio: **não foram criadas tabelas de domínio** nesta etapa.
+- Migration inicial `Migration20261116200000.ts` cria cinco tabelas: `wallets`, `wager_transactions`, `wallet_ledger_entries`, `inbox_messages` e `outbox_messages`, com constraints, índices e triggers. Mapeamentos de entidades ORM são uma entrega posterior; não executar autogeração do schema contra um banco com esta migration sem antes alinhar os mapeamentos.
 
 ## Pré-requisitos
 
@@ -25,6 +25,7 @@ cp .env.example .env
 bun install
 docker compose up -d postgres
 bun run db:debug
+bun run db:migrate:up
 bun run start:dev
 ```
 
@@ -33,8 +34,8 @@ A aplicação NestJS estabelece conexão com o banco no bootstrap. Sem PostgreSQ
 ## Gerenciar migrations
 
 ```bash
-# Após criar/alterar entidades de persistência
-bun run db:migrate:create --name=add_wallet_table
+# Gerar migrations posteriores somente após implementar os mapeamentos MikroORM
+bun run db:migrate:create --name=add_future_table
 
 # Consultar
 bun run db:migrate:pending
@@ -59,4 +60,4 @@ Os arquivos `.ts` das migrations ficam em `src/migrations/` e compilam para `dis
 
 O workflow GitHub Actions (em `.github/workflows/ci.yml`) roda qualidade e build em PRs/push na `master`, utilizando um serviço PostgreSQL descartável. O segundo job **apenas imprime os passos futuros** (Terraform plan, imagem ECR, migrations, deployment EKS, smoke test), sem autenticar em AWS ou aplicar qualquer alteração. A implantação real ficará para outra tarefa, com credenciais temporárias e aprovações.
 
-**Pendente:** gerar e commitar `bun.lock` com `bun install`; depois habilitar `bun install --frozen-lockfile` no Docker e CI.
+**Reprodutibilidade:** `bun.lock` está versionado; CI e Docker executam `bun install --frozen-lockfile`. O workflow aplica migrations, testa constraints em PostgreSQL real, executa rollback e reaplica no banco temporário. **Não repetir rollback de migrations destrutivas em produção.**
