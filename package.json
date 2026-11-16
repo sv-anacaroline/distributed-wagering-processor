@@ -38,7 +38,10 @@
     "test:load:soak": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=soak k6 run /scripts/scenarios/soak.js",
     "worker:references": "bun src/jobs/retry-references.ts",
     "test:concurrency": "bun test ./test/distributed-concurrency.integration.test.ts ./test/concurrency-locks.integration.test.ts",
-    "test:api:e2e": "bun test ./test/http-api.e2e.test.ts"
+    "test:api:e2e": "bun test ./test/http-api.e2e.test.ts",
+    "worker:sqs": "bun src/jobs/consume-wager-sqs.ts",
+    "worker:outbox": "bun src/jobs/publish-outbox.ts",
+    "test:events:e2e": "bun test ./test/sqs-inbox.integration.test.ts ./test/sqs-events.integration.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
@@ -51,7 +54,8 @@
     "@mikro-orm/decorators": "7.2.9",
     "@mikro-orm/migrations": "7.2.9",
     "@mikro-orm/nestjs": "^7.1.0",
-    "@mikro-orm/postgresql": "7.2.9"
+    "@mikro-orm/postgresql": "7.2.9",
+    "@aws-sdk/client-sqs": "3.1169.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
