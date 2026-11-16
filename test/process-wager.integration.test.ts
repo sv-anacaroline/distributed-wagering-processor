@@ -194,6 +194,7 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     const result = await processor.retryPending(pending.transactionId, wallet.walletId);
     expect(result?.status).toBe(Status.Processed);
     expect(result?.balance.amount).toBe('100.00');
+    if (!result) throw new Error('Reference retry did not complete');
     expect(await processor.process(refund)).toEqual(result);
   });
 
@@ -217,7 +218,9 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     const wallet = await opening();
     const bet = wager(wallet, Kind.Bet);
     const results = await Promise.all(Array.from({ length: 50 }, () => processor.process(bet)));
-    for (const result of results) expect(result).toEqual(results[0]);
+    const original = results[0];
+    if (!original) throw new Error('Expected a processed request');
+    for (const result of results) expect(result).toEqual(original);
     expect((await balance(wallet.walletId)).balance).toBe('75.00');
     expect(await count(`select count(*)::text as count from wallet_ledger_entries
       where wallet_id=?::uuid`, [wallet.walletId])).toBe(2);
