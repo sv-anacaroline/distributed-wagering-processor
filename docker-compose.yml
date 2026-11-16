@@ -74,6 +74,44 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Section 10: SQS FIFO consumer (Inbox+financial SQL commit before ACK).
+  wager-sqs-consumer:
+    profiles: [sqs-workers]
+    build:
+      context: .
+      target: development
+    init: true
+    command: ["bun", "run", "worker:sqs"]
+    volumes:
+      - ./:/app
+      - api_node_modules:/app/node_modules
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      terraform-local:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Section 11: outbox publisher; can be scaled horizontally.
+  wager-outbox-publisher:
+    profiles: [sqs-workers]
+    build:
+      context: .
+      target: development
+    init: true
+    command: ["bun", "run", "worker:outbox"]
+    volumes:
+      - ./:/app
+      - api_node_modules:/app/node_modules
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      terraform-local:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   postgres:
     image: postgres:17-alpine
     environment:
