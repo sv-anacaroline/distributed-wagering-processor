@@ -1,8 +1,13 @@
 import { beforeAll, afterAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
-  ChangeMessageVisibilityCommand, CreateQueueCommand, DeleteMessageCommand, DeleteQueueCommand,
-  ReceiveMessageCommand, SendMessageCommand, SQSClient,
+  ChangeMessageVisibilityCommand,
+  CreateQueueCommand,
+  DeleteMessageCommand,
+  DeleteQueueCommand,
+  ReceiveMessageCommand,
+  SendMessageCommand,
+  SQSClient,
 } from '@aws-sdk/client-sqs';
 import { MikroORM } from '@mikro-orm/postgresql';
 import config from '../src/mikro-orm.config.js';
@@ -11,7 +16,10 @@ import { ProcessWager } from '../src/application/process-wager.js';
 import { OutboxPublisher } from '../src/events/outbox-publisher.js';
 import { SqsWagerConsumer } from '../src/events/sqs-wager-consumer.js';
 import type { WagerCommand } from '../src/application/wager-contracts.js';
-import { WagerTransactionKind as Kind, WagerTransactionStatus as Status } from '../src/domain/wager-transaction.js';
+import {
+  WagerTransactionKind as Kind,
+  WagerTransactionStatus as Status,
+} from '../src/domain/wager-transaction.js';
 
 const suite = process.env.EVENTS_E2E === '1' ? describe : describe.skip;
 let orm: MikroORM;
@@ -38,45 +46,60 @@ interface Published {
   readonly version: number;
 }
 async function queue(name: string): Promise<string> {
-  const response = await sqs.send(new CreateQueueCommand({
-    QueueName: name,
-    Attributes: {
-      FifoQueue: 'true', ContentBasedDeduplication: 'true',
-      VisibilityTimeout: '60', ReceiveMessageWaitTimeSeconds: '0',
-    },
-  }));
+  const response = await sqs.send(
+    new CreateQueueCommand({
+      QueueName: name,
+      Attributes: {
+        FifoQueue: 'true',
+        ContentBasedDeduplication: 'true',
+        VisibilityTimeout: '60',
+        ReceiveMessageWaitTimeSeconds: '0',
+      },
+    }),
+  );
   if (!response.QueueUrl) throw new Error('Queue could not be created: ' + name);
   return response.QueueUrl;
 }
 async function wallet(amount = '100.00'): Promise<Opened> {
   const playerId = randomUUID();
-  const result = await new WalletService(orm.em).create(
-    playerId, { amount, currency: 'BRL' },
-  );
+  const result = await new WalletService(orm.em).create(playerId, { amount, currency: 'BRL' });
   return { walletId: result.id, playerId };
 }
-function wager(w: Opened, kind: Exclude<Kind, Kind.Opening> = Kind.Bet, amount = '25.00'): WagerCommand {
+function wager(
+  w: Opened,
+  kind: Exclude<Kind, Kind.Opening> = Kind.Bet,
+  amount = '25.00',
+): WagerCommand {
   const externalTransactionId = randomUUID();
   return {
-    providerId: 'provider-a', externalTransactionId,
+    providerId: 'provider-a',
+    externalTransactionId,
     idempotencyKey: 'provider-a:' + externalTransactionId,
-    playerId: w.playerId, walletId: w.walletId, roundId: 'round-one', gameId: 'game-one',
-    kind, money: { amount, currency: 'BRL' },
+    playerId: w.playerId,
+    walletId: w.walletId,
+    roundId: 'round-one',
+    gameId: 'game-one',
+    kind,
+    money: { amount, currency: 'BRL' },
   };
 }
 function envelope(command: WagerCommand, messageId = 'msg-' + randomUUID()) {
   return {
-    messageId, type: 'WagerTransactionRequested',
-    occurredAt: new Date().toISOString(), data: command,
+    messageId,
+    type: 'WagerTransactionRequested',
+    occurredAt: new Date().toISOString(),
+    data: command,
   };
 }
 async function send(body: string, groupId: string): Promise<void> {
-  await sqs.send(new SendMessageCommand({
-    QueueUrl: sourceUrl,
-    MessageBody: body,
-    MessageGroupId: groupId,
-    MessageDeduplicationId: randomUUID(),
-  }));
+  await sqs.send(
+    new SendMessageCommand({
+      QueueUrl: sourceUrl,
+      MessageBody: body,
+      MessageGroupId: groupId,
+      MessageDeduplicationId: randomUUID(),
+    }),
+  );
 }
 async function consumeOne(outcome: 'ack' | 'dlq' = 'ack'): Promise<void> {
   for (let i = 0; i < 6; i++) {
@@ -101,7 +124,7 @@ async function outboxCount(walletId: string, published = false): Promise<number>
 }
 async function publishWallet(walletId: string, expected: number): Promise<void> {
   for (let i = 0; i < 30; i++) {
-    if (await outboxCount(walletId, true) >= expected) return;
+    if ((await outboxCount(walletId, true)) >= expected) return;
     await publisher.runOnce();
   }
   throw new Error('Outbox events did not become published for wallet ' + walletId);
@@ -116,10 +139,14 @@ async function receiveEvents(walletId: string, expected: number): Promise<Publis
     }
   }
   for (let i = 0; i < 25 && found.length < expected; i++) {
-    const batch = await sqs.send(new ReceiveMessageCommand({
-      QueueUrl: eventsUrl, WaitTimeSeconds: 1, MaxNumberOfMessages: 10,
-      MessageSystemAttributeNames: ['MessageGroupId'],
-    }));
+    const batch = await sqs.send(
+      new ReceiveMessageCommand({
+        QueueUrl: eventsUrl,
+        WaitTimeSeconds: 1,
+        MaxNumberOfMessages: 10,
+        MessageSystemAttributeNames: ['MessageGroupId'],
+      }),
+    );
     for (const item of batch.Messages ?? []) {
       if (!item.ReceiptHandle || !item.Body) throw new Error('Invalid published SQS delivery');
       const value = JSON.parse(item.Body) as Published;
@@ -129,9 +156,12 @@ async function receiveEvents(walletId: string, expected: number): Promise<Publis
       } else {
         deferredEvents.push(value);
       }
-      await sqs.send(new DeleteMessageCommand({
-        QueueUrl: eventsUrl, ReceiptHandle: item.ReceiptHandle,
-      }));
+      await sqs.send(
+        new DeleteMessageCommand({
+          QueueUrl: eventsUrl,
+          ReceiptHandle: item.ReceiptHandle,
+        }),
+      );
     }
   }
   expect(found).toHaveLength(expected);
@@ -151,9 +181,7 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     dlqUrl = await queue('wager-e2e-dlq-' + runId + '.fifo');
     sourceUrl = await queue('wager-e2e-in-' + runId + '.fifo');
     eventsUrl = await queue('wager-e2e-out-' + runId + '.fifo');
-    consumer = new SqsWagerConsumer(
-      sqs, { incoming: sourceUrl, deadLetter: dlqUrl }, processor,
-    );
+    consumer = new SqsWagerConsumer(sqs, { incoming: sourceUrl, deadLetter: dlqUrl }, processor);
     publisher = new OutboxPublisher(orm.em, sqs, eventsUrl);
   }, 60_000);
   afterAll(async () => {
@@ -161,7 +189,7 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       await Promise.all(
         [sourceUrl, eventsUrl, dlqUrl]
           .filter(Boolean)
-          .map(url => sqs.send(new DeleteQueueCommand({ QueueUrl: url }))),
+          .map((url) => sqs.send(new DeleteQueueCommand({ QueueUrl: url }))),
       );
       sqs.destroy();
     }
@@ -179,16 +207,17 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       ['wager-request-consumer', body.messageId],
     );
     expect(inbox?.processed_at).toBeTruthy();
-    expect(await n(
-      'select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid',
-      [w.walletId],
-    )).toBe(2);
+    expect(
+      await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [
+        w.walletId,
+      ]),
+    ).toBe(2);
     expect(await outboxCount(w.walletId)).toBe(2);
     expect(await outboxCount(w.walletId, true)).toBe(0);
 
     await publishWallet(w.walletId, 2);
     const deliveries = await receiveEvents(w.walletId, 2);
-    expect(new Set(deliveries.map(x => x.eventType))).toEqual(
+    expect(new Set(deliveries.map((x) => x.eventType))).toEqual(
       new Set(['WagerTransactionProcessed', 'WalletBalanceChanged']),
     );
     for (const item of deliveries) {
@@ -196,7 +225,7 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       expect(item.version).toBe(1);
       expect(item.aggregateId).toBe(w.walletId);
     }
-    const changed = deliveries.find(x => x.eventType === 'WalletBalanceChanged');
+    const changed = deliveries.find((x) => x.eventType === 'WalletBalanceChanged');
     expect(changed?.data.money).toEqual({ amount: '25.00', currency: 'BRL' });
     expect(changed?.data.balanceAfter).toEqual({ amount: '75.00', currency: 'BRL' });
   }, 60_000);
@@ -208,16 +237,19 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     await consumeOne();
     await send(request, w.walletId); // SQS message dedup id changes, Inbox messageId does not.
     await consumeOne();
-    expect(await n(
-      `select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid`,
-      [w.walletId],
-    )).toBe(2);
+    expect(
+      await n(`select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid`, [
+        w.walletId,
+      ]),
+    ).toBe(2);
     expect(await outboxCount(w.walletId)).toBe(2);
-    expect(await n(
-      `select count(*)::integer as n from inbox_messages
+    expect(
+      await n(
+        `select count(*)::integer as n from inbox_messages
        where consumer_name='wager-request-consumer' and message_id=?`,
-      [(JSON.parse(request) as { messageId: string }).messageId],
-    )).toBe(1);
+        [(JSON.parse(request) as { messageId: string }).messageId],
+      ),
+    ).toBe(1);
   }, 60_000);
 
   it('acknowledges business rejection and emits only WagerTransactionRejected', async () => {
@@ -225,10 +257,11 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     await send(JSON.stringify(envelope(wager(w))), w.walletId);
     await consumeOne();
     expect(await outboxCount(w.walletId)).toBe(1);
-    expect(await n(
-      'select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid',
-      [w.walletId],
-    )).toBe(0);
+    expect(
+      await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [
+        w.walletId,
+      ]),
+    ).toBe(0);
     await publishWallet(w.walletId, 1);
     const events = await receiveEvents(w.walletId, 1);
     expect(events[0]?.eventType).toBe('WagerTransactionRejected');
@@ -242,7 +275,7 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     expect(await outboxCount(w.walletId)).toBe(1);
     await publishWallet(w.walletId, 1);
     const events = await receiveEvents(w.walletId, 1);
-    expect(events.map(x => x.eventType)).toEqual(['WagerTransactionProcessed']);
+    expect(events.map((x) => x.eventType)).toEqual(['WagerTransactionProcessed']);
     expect(events[0]?.data.kind).toBe('LOSS');
   }, 60_000);
 
@@ -275,21 +308,28 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     expect(await outboxCount(w.walletId)).toBe(5);
     await publishWallet(w.walletId, 5);
     const events = await receiveEvents(w.walletId, 5);
-    expect(events.filter(x => x.eventType === 'WagerTransactionPendingReference')).toHaveLength(1);
-    expect(events.filter(x => x.eventType === 'WagerTransactionProcessed')).toHaveLength(2);
-    expect(events.filter(x => x.eventType === 'WalletBalanceChanged')).toHaveLength(2);
+    expect(events.filter((x) => x.eventType === 'WagerTransactionPendingReference')).toHaveLength(
+      1,
+    );
+    expect(events.filter((x) => x.eventType === 'WagerTransactionProcessed')).toHaveLength(2);
+    expect(events.filter((x) => x.eventType === 'WalletBalanceChanged')).toHaveLength(2);
   }, 90_000);
 
   it('sends malformed JSON to FIFO DLQ and ACKs source, without financial side effects', async () => {
     const group = 'poison-' + randomUUID();
     await send('not-json', group);
     await consumeOne('dlq');
-    const messages = await sqs.send(new ReceiveMessageCommand({
-      QueueUrl: dlqUrl, WaitTimeSeconds: 1, MaxNumberOfMessages: 1,
-    }));
+    const messages = await sqs.send(
+      new ReceiveMessageCommand({
+        QueueUrl: dlqUrl,
+        WaitTimeSeconds: 1,
+        MaxNumberOfMessages: 1,
+      }),
+    );
     expect(messages.Messages?.[0]?.Body).toBe('not-json');
     const handle = messages.Messages?.[0]?.ReceiptHandle;
-    if (handle) await sqs.send(new DeleteMessageCommand({ QueueUrl: dlqUrl, ReceiptHandle: handle }));
+    if (handle)
+      await sqs.send(new DeleteMessageCommand({ QueueUrl: dlqUrl, ReceiptHandle: handle }));
   }, 60_000);
 
   it('recovers a claimed but unpublished event after worker death and lease expiration', async () => {
@@ -315,7 +355,7 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     await publishWallet(w.walletId, 2);
     expect(await outboxCount(w.walletId, true)).toBe(2);
     const events = await receiveEvents(w.walletId, 2);
-    expect(new Set(events.map(x => x.eventId)).size).toBe(2);
+    expect(new Set(events.map((x) => x.eventId)).size).toBe(2);
     // Make another publisher poll: published rows are never sent again.
     const again = await replacement.runOnce();
     expect(again.published).toBeGreaterThanOrEqual(0);
@@ -325,10 +365,16 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
   it('retries a failed outbox publication without losing the event or changing the ledger', async () => {
     const w = await wallet();
     await processor.process(wager(w));
-    const [row] = await orm.em.execute<Array<{
-      id: string; aggregate_id: string; event_type: string;
-      payload: Record<string, unknown>; occurred_at: Date; attempts: number;
-    }>>(
+    const [row] = await orm.em.execute<
+      Array<{
+        id: string;
+        aggregate_id: string;
+        event_type: string;
+        payload: Record<string, unknown>;
+        occurred_at: Date;
+        attempts: number;
+      }>
+    >(
       `select id,aggregate_id,event_type,payload,occurred_at,attempts
        from outbox_messages where aggregate_id=?::uuid
        order by occurred_at,id limit 1`,
@@ -345,10 +391,14 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     const failingSqs = { send: () => Promise.reject(new Error('simulated SQS outage')) };
     const failing = new OutboxPublisher(orm.em, failingSqs as never, eventsUrl);
     expect(await failing.publish({ ...row, claimToken })).toBe(false);
-    const [retry] = await orm.em.execute<Array<{
-      attempts: number; claimed_by: string | null;
-      next_attempt_at: Date | null; published_at: Date | null;
-    }>>(
+    const [retry] = await orm.em.execute<
+      Array<{
+        attempts: number;
+        claimed_by: string | null;
+        next_attempt_at: Date | null;
+        published_at: Date | null;
+      }>
+    >(
       'select attempts,claimed_by,next_attempt_at,published_at from outbox_messages where id=?::uuid',
       [row.id],
     );
@@ -363,8 +413,12 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     await publishWallet(w.walletId, 2);
     expect(await outboxCount(w.walletId, true)).toBe(2);
     const events = await receiveEvents(w.walletId, 2);
-    expect(new Set(events.map(x => x.eventId)).size).toBe(2);
-    expect(await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId])).toBe(2);
+    expect(new Set(events.map((x) => x.eventId)).size).toBe(2);
+    expect(
+      await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [
+        w.walletId,
+      ]),
+    ).toBe(2);
   }, 90_000);
 
   it('dead-letters a replay with the same Inbox message ID but altered financial content', async () => {
@@ -379,15 +433,23 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     await send(JSON.stringify(tampered), w.walletId);
     await consumeOne('dlq');
     expect(await outboxCount(w.walletId)).toBe(2);
-    expect(await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId])).toBe(2);
+    expect(
+      await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [
+        w.walletId,
+      ]),
+    ).toBe(2);
     const [walletState] = await orm.em.execute<Array<{ balance: string }>>(
       'select balance::text as balance from wallets where id=?::uuid',
       [w.walletId],
     );
     expect(walletState?.balance).toBe('75.00');
-    const dlq = await sqs.send(new ReceiveMessageCommand({
-      QueueUrl: dlqUrl, MaxNumberOfMessages: 1, WaitTimeSeconds: 1,
-    }));
+    const dlq = await sqs.send(
+      new ReceiveMessageCommand({
+        QueueUrl: dlqUrl,
+        MaxNumberOfMessages: 1,
+        WaitTimeSeconds: 1,
+      }),
+    );
     expect(dlq.Messages?.[0]?.Body).toBe(JSON.stringify(tampered));
     const handle = dlq.Messages?.[0]?.ReceiptHandle;
     if (!handle) throw new Error('Missing DLQ receipt handle');
@@ -418,17 +480,33 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       processor,
     );
     let failed: unknown;
-    try { await crashing.runOnce(); } catch (error: unknown) { failed = error; }
+    try {
+      await crashing.runOnce();
+    } catch (error: unknown) {
+      failed = error;
+    }
     expect(failed).toBeInstanceOf(AggregateError);
     expect(receipt).toBeTruthy();
     expect(await outboxCount(w.walletId)).toBe(2);
-    expect(await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId])).toBe(2);
-    await sqs.send(new ChangeMessageVisibilityCommand({
-      QueueUrl: sourceUrl, ReceiptHandle: receipt, VisibilityTimeout: 0,
-    }));
+    expect(
+      await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [
+        w.walletId,
+      ]),
+    ).toBe(2);
+    await sqs.send(
+      new ChangeMessageVisibilityCommand({
+        QueueUrl: sourceUrl,
+        ReceiptHandle: receipt,
+        VisibilityTimeout: 0,
+      }),
+    );
     await consumeOne();
     expect(await outboxCount(w.walletId)).toBe(2);
-    expect(await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId])).toBe(2);
+    expect(
+      await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [
+        w.walletId,
+      ]),
+    ).toBe(2);
   }, 60_000);
 
   it('cooperates across three publishers without double-claiming a wallet event', async () => {
@@ -440,14 +518,17 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       new OutboxPublisher(orm.em, sqs, eventsUrl, 'p3'),
     ];
     for (let i = 0; i < 20; i++) {
-      await Promise.all(publishers.map(p => p.runOnce()));
-      if ((await Promise.all(wallets.map(w => outboxCount(w.walletId, true)))).every(n => n === 2)) break;
+      await Promise.all(publishers.map((p) => p.runOnce()));
+      if (
+        (await Promise.all(wallets.map((w) => outboxCount(w.walletId, true)))).every((n) => n === 2)
+      )
+        break;
     }
     for (const w of wallets) {
       expect(await outboxCount(w.walletId, true)).toBe(2);
     }
     const received: Published[] = [];
-    for (const w of wallets) received.push(...await receiveEvents(w.walletId, 2));
-    expect(new Set(received.map(x => x.eventId)).size).toBe(6);
+    for (const w of wallets) received.push(...(await receiveEvents(w.walletId, 2)));
+    expect(new Set(received.map((x) => x.eventId)).size).toBe(6);
   }, 90_000);
 });

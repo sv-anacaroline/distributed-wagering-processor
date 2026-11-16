@@ -1,7 +1,4 @@
-import {
-  GetQueueUrlCommand,
-  SQSClient,
-} from '@aws-sdk/client-sqs';
+import { GetQueueUrlCommand, SQSClient } from '@aws-sdk/client-sqs';
 
 export function sqsClient(): SQSClient {
   return new SQSClient({
@@ -11,7 +8,9 @@ export function sqsClient(): SQSClient {
   });
 }
 export async function sqsQueueUrl(
-  client: SQSClient, explicit: string | undefined, name: string,
+  client: SQSClient,
+  explicit: string | undefined,
+  name: string,
 ): Promise<string> {
   if (explicit) return explicit;
   const result = await client.send(new GetQueueUrlCommand({ QueueName: name }));

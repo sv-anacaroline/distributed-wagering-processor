@@ -12,7 +12,8 @@ async function main(): Promise<void> {
   const client = sqsClient();
   try {
     const queue = await sqsQueueUrl(
-      client, process.env.SQS_WAGER_EVENTS_URL,
+      client,
+      process.env.SQS_WAGER_EVENTS_URL,
       process.env.SQS_WAGER_EVENTS_QUEUE_NAME ?? 'wager-events.fifo',
     );
     await new OutboxPublisher(orm.em, client, queue).run(termination.signal);

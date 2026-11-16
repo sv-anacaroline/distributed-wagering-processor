@@ -6,14 +6,21 @@ import { eventMessage, OUTBOX_LEASE_SECONDS, OutboxPublisher } from './outbox-pu
 const walletId = randomUUID();
 const eventId = randomUUID();
 const event = () => ({
-  id: eventId, aggregate_id: walletId, event_type: 'WalletBalanceChanged',
+  id: eventId,
+  aggregate_id: walletId,
+  event_type: 'WalletBalanceChanged',
   payload: {
-    eventId, eventType: 'WalletBalanceChanged', aggregateId: walletId,
-    correlationId: 'provider:transaction', occurredAt: '2026-11-16T12:00:00.000Z',
-    version: 1, data: { walletId, money: { amount: '25.00', currency: 'BRL' } },
+    eventId,
+    eventType: 'WalletBalanceChanged',
+    aggregateId: walletId,
+    correlationId: 'provider:transaction',
+    occurredAt: '2026-11-16T12:00:00.000Z',
+    version: 1,
+    data: { walletId, money: { amount: '25.00', currency: 'BRL' } },
   },
   occurred_at: new Date('2026-11-16T12:00:00.000Z'),
-  attempts: 0, claimToken: 'test:claim',
+  attempts: 0,
+  claimToken: 'test:claim',
 });
 describe('transactional outbox publisher', () => {
   it('serializes a versioned event with stable per-wallet FIFO group and eventId dedup', () => {
@@ -27,20 +34,28 @@ describe('transactional outbox publisher', () => {
 
   function fake(sender: (cmd: SendMessageCommand) => Promise<unknown>, rows = [event()]) {
     const queries: Array<{ sql: string; params: unknown[] }> = [];
-    const db = { fork: () => ({
-      execute: (sql: string, params: unknown[], mode?: string): Promise<unknown> => {
-        queries.push({ sql, params });
-        if (sql.startsWith('with due')) return Promise.resolve(rows);
-        if (mode === 'run') return Promise.resolve({ affectedRows: 1 });
-        return Promise.resolve([]);
-      },
-    }) };
+    const db = {
+      fork: () => ({
+        execute: (sql: string, params: unknown[], mode?: string): Promise<unknown> => {
+          queries.push({ sql, params });
+          if (sql.startsWith('with due')) return Promise.resolve(rows);
+          if (mode === 'run') return Promise.resolve({ affectedRows: 1 });
+          return Promise.resolve([]);
+        },
+      }),
+    };
     const messages: SendMessageCommand[] = [];
-    const sqs = { send: (command: SendMessageCommand) => {
-      messages.push(command);
-      return sender(command);
-    } };
-    return { publisher: new OutboxPublisher(db as never, sqs as never, 'events'), queries, messages };
+    const sqs = {
+      send: (command: SendMessageCommand) => {
+        messages.push(command);
+        return sender(command);
+      },
+    };
+    return {
+      publisher: new OutboxPublisher(db as never, sqs as never, 'events'),
+      queries,
+      messages,
+    };
   }
 
   it('claims events using SKIP LOCKED without holding a transaction over SQS', async () => {
@@ -72,16 +87,22 @@ describe('transactional outbox publisher', () => {
     const controller = new AbortController();
     controller.abort();
     expect(await publisher.runOnce(controller.signal)).toEqual({
-      claimed: 1, published: 0, retried: 0,
+      claimed: 1,
+      published: 0,
+      retried: 0,
     });
     expect(messages).toHaveLength(0);
-    expect(queries.some(x => x.sql.includes('claimed_by=null'))).toBe(true);
+    expect(queries.some((x) => x.sql.includes('claimed_by=null'))).toBe(true);
   });
 
   it('validates batch size and does not claim more than fifty in one database query', async () => {
     const { publisher } = fake(() => Promise.resolve({}));
     let caught: unknown;
-    try { await publisher.claim(51); } catch (error: unknown) { caught = error; }
+    try {
+      await publisher.claim(51);
+    } catch (error: unknown) {
+      caught = error;
+    }
     expect(caught).toBeInstanceOf(Error);
     expect((await publisher.claim(1)).length).toBe(1);
   });

@@ -9,7 +9,11 @@ import {
   type SQSClient,
 } from '@aws-sdk/client-sqs';
 import { DomainError } from '../domain/errors.js';
-import { IdempotencyConflictError, InboxPayloadConflictError, type ProcessWager } from '../application/process-wager.js';
+import {
+  IdempotencyConflictError,
+  InboxPayloadConflictError,
+  type ProcessWager,
+} from '../application/process-wager.js';
 import { InvalidSqsMessageError, parseWagerRequest } from './wager-request.js';
 
 export const WAGER_CONSUMER_NAME = 'wager-request-consumer';
@@ -68,64 +72,86 @@ export class SqsWagerConsumer {
       const attempts = receiveCount(message);
       if (isPermanentWagerError(error) || attempts >= SQS_MAX_ATTEMPTS) {
         await this.toDlq(message, error);
-        await this.sqs.send(new DeleteMessageCommand({
-          QueueUrl: this.queues.incoming, ReceiptHandle: message.ReceiptHandle,
-        }));
+        await this.sqs.send(
+          new DeleteMessageCommand({
+            QueueUrl: this.queues.incoming,
+            ReceiptHandle: message.ReceiptHandle,
+          }),
+        );
         return 'dlq';
       }
-      await this.sqs.send(new ChangeMessageVisibilityCommand({
-        QueueUrl: this.queues.incoming,
-        ReceiptHandle: message.ReceiptHandle,
-        VisibilityTimeout: retryVisibilitySeconds(attempts),
-      }));
+      await this.sqs.send(
+        new ChangeMessageVisibilityCommand({
+          QueueUrl: this.queues.incoming,
+          ReceiptHandle: message.ReceiptHandle,
+          VisibilityTimeout: retryVisibilitySeconds(attempts),
+        }),
+      );
       return 'retry';
     }
     // Important: a failed DeleteMessage is NOT a business failure and must
     // NEVER route an already committed financial transaction to the DLQ.
     // SQS can redeliver; Inbox/command idempotency safely return the original.
-    await this.sqs.send(new DeleteMessageCommand({
-      QueueUrl: this.queues.incoming, ReceiptHandle: message.ReceiptHandle,
-    }));
+    await this.sqs.send(
+      new DeleteMessageCommand({
+        QueueUrl: this.queues.incoming,
+        ReceiptHandle: message.ReceiptHandle,
+      }),
+    );
     return 'ack';
   }
 
   private async toDlq(message: Message, error: unknown): Promise<void> {
     const original = message.Body ?? '';
     const dedup = createHash('sha256')
-      .update(`${message.MessageId ?? ''}:${original}`).digest('hex');
+      .update(`${message.MessageId ?? ''}:${original}`)
+      .digest('hex');
     // Preserve the original envelope so operational DLQ replay is possible.
-    await this.sqs.send(new SendMessageCommand({
-      QueueUrl: this.queues.deadLetter,
-      MessageBody: original,
-      MessageGroupId: 'wager-dead-letters',
-      MessageDeduplicationId: dedup,
-      MessageAttributes: {
-        failureKind: { DataType: 'String', StringValue: isPermanentWagerError(error) ? 'PERMANENT' : 'RETRIES_EXHAUSTED' },
-        errorType: { DataType: 'String', StringValue: error instanceof Error ? error.name : 'UnknownError' },
-      },
-    }));
+    await this.sqs.send(
+      new SendMessageCommand({
+        QueueUrl: this.queues.deadLetter,
+        MessageBody: original,
+        MessageGroupId: 'wager-dead-letters',
+        MessageDeduplicationId: dedup,
+        MessageAttributes: {
+          failureKind: {
+            DataType: 'String',
+            StringValue: isPermanentWagerError(error) ? 'PERMANENT' : 'RETRIES_EXHAUSTED',
+          },
+          errorType: {
+            DataType: 'String',
+            StringValue: error instanceof Error ? error.name : 'UnknownError',
+          },
+        },
+      }),
+    );
   }
 
   private async release(receiptHandle: string): Promise<void> {
-    await this.sqs.send(new ChangeMessageVisibilityCommand({
-      QueueUrl: this.queues.incoming,
-      ReceiptHandle: receiptHandle,
-      VisibilityTimeout: 0,
-    }));
+    await this.sqs.send(
+      new ChangeMessageVisibilityCommand({
+        QueueUrl: this.queues.incoming,
+        ReceiptHandle: receiptHandle,
+        VisibilityTimeout: 0,
+      }),
+    );
   }
 
   async runOnce(signal?: AbortSignal): Promise<readonly MessageOutcome[]> {
-    const received = await this.sqs.send(new ReceiveMessageCommand({
-      QueueUrl: this.queues.incoming,
-      MaxNumberOfMessages: 10,
-      WaitTimeSeconds: 1,
-      VisibilityTimeout: 60,
-      MessageSystemAttributeNames: ['ApproximateReceiveCount'],
-    }), { ...(signal ? { abortSignal: signal } : {}) });
+    const received = await this.sqs.send(
+      new ReceiveMessageCommand({
+        QueueUrl: this.queues.incoming,
+        MaxNumberOfMessages: 10,
+        WaitTimeSeconds: 1,
+        VisibilityTimeout: 60,
+        MessageSystemAttributeNames: ['ApproximateReceiveCount'],
+      }),
+      { ...(signal ? { abortSignal: signal } : {}) },
+    );
     const messages = received.Messages ?? [];
     // All operations settle before the next batch; no unobserved promises on shutdown.
     const settled = await Promise.allSettled(
-      messages.map(message => this.processOne(message, signal)),
+      messages.map((message) => this.processOne(message, signal)),
     );
     const failures: unknown[] = [];
     for (const item of settled) {
@@ -150,7 +176,9 @@ export class SqsWagerConsumer {
       } catch (error: unknown) {
         if (signal.aborted) break;
         console.error('SQS consumer iteration failed', error);
-        try { await sleep(500, undefined, { signal }); } catch {
+        try {
+          await sleep(500, undefined, { signal });
+        } catch {
           if (signal.aborted) break;
         }
       }

@@ -1,36 +1,61 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  ChangeMessageVisibilityCommand, DeleteMessageCommand, ReceiveMessageCommand, SendMessageCommand,
+  ChangeMessageVisibilityCommand,
+  DeleteMessageCommand,
+  ReceiveMessageCommand,
+  SendMessageCommand,
   type Message,
 } from '@aws-sdk/client-sqs';
 import { InvalidSqsMessageError } from './wager-request.js';
 import {
-  SqsWagerConsumer, isPermanentWagerError, receiveCount, retryVisibilitySeconds,
+  SqsWagerConsumer,
+  isPermanentWagerError,
+  receiveCount,
+  retryVisibilitySeconds,
 } from './sqs-wager-consumer.js';
 
 const walletId = '0192f291-27dd-7d3f-8071-5f8685deef37';
 const playerId = '0192f28f-5dc0-7d58-bdb2-814ad6a0f4a1';
-const payload = (changes: Record<string, unknown> = {}) => JSON.stringify({
-  messageId: 'msg-one', type: 'WagerTransactionRequested',
-  occurredAt: '2026-07-29T15:00:00.000Z',
-  data: { providerId: 'provider-a', externalTransactionId: 'tx1', idempotencyKey: 'key1',
-    playerId, walletId, roundId: 'r1', gameId: 'g1', kind: 'BET',
-    money: { amount: '25.00', currency: 'BRL' }, ...changes },
-});
+const payload = (changes: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    messageId: 'msg-one',
+    type: 'WagerTransactionRequested',
+    occurredAt: '2026-07-29T15:00:00.000Z',
+    data: {
+      providerId: 'provider-a',
+      externalTransactionId: 'tx1',
+      idempotencyKey: 'key1',
+      playerId,
+      walletId,
+      roundId: 'r1',
+      gameId: 'g1',
+      kind: 'BET',
+      money: { amount: '25.00', currency: 'BRL' },
+      ...changes,
+    },
+  });
 const message = (body = payload(), attempts = '1'): Message => ({
-  Body: body, MessageId: 'aws-id', ReceiptHandle: 'handle',
+  Body: body,
+  MessageId: 'aws-id',
+  ReceiptHandle: 'handle',
   Attributes: { ApproximateReceiveCount: attempts },
 });
 const queues = { incoming: 'http://sqs/request', deadLetter: 'http://sqs/dlq' };
-type SentCommand = ChangeMessageVisibilityCommand | DeleteMessageCommand | SendMessageCommand | ReceiveMessageCommand;
+type SentCommand =
+  | ChangeMessageVisibilityCommand
+  | DeleteMessageCommand
+  | SendMessageCommand
+  | ReceiveMessageCommand;
 
 function setup(process: () => Promise<unknown>, incoming: Message[] = []) {
   const sent: SentCommand[] = [];
-  const sqs = { send: (command: SentCommand): Promise<unknown> => {
-    sent.push(command);
-    if (command instanceof ReceiveMessageCommand) return Promise.resolve({ Messages: incoming });
-    return Promise.resolve({});
-  } };
+  const sqs = {
+    send: (command: SentCommand): Promise<unknown> => {
+      sent.push(command);
+      if (command instanceof ReceiveMessageCommand) return Promise.resolve({ Messages: incoming });
+      return Promise.resolve({});
+    },
+  };
   const worker = new SqsWagerConsumer(sqs as never, queues, {
     processFromInbox: process as never,
   });
@@ -39,7 +64,9 @@ function setup(process: () => Promise<unknown>, incoming: Message[] = []) {
 describe('SQS wager worker delivery policy', () => {
   it('acknowledges only AFTER SQL use case resolves successfully', async () => {
     let release!: () => void;
-    const committed = new Promise<void>(resolve => { release = resolve; });
+    const committed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const { worker, sent } = setup(() => committed);
     const processing = worker.processOne(message());
     await Promise.resolve();
@@ -51,7 +78,7 @@ describe('SQS wager worker delivery policy', () => {
   it('routes a business REJECTED result to ACK, not DLQ', async () => {
     const { worker, sent } = setup(() => Promise.resolve({ status: 'REJECTED' }));
     expect(await worker.processOne(message())).toBe('ack');
-    expect(sent.some(cmd => cmd instanceof SendMessageCommand)).toBe(false);
+    expect(sent.some((cmd) => cmd instanceof SendMessageCommand)).toBe(false);
   });
   it('uses bounded exponential visibility backoff for transient infrastructure errors', async () => {
     for (const attempt of [1, 2, 3, 4]) {
@@ -81,34 +108,50 @@ describe('SQS wager worker delivery policy', () => {
   });
   it('never deletes before a failed DLQ publish', async () => {
     const commands: SentCommand[] = [];
-    const sqs = { send: (cmd: SentCommand) => {
-      commands.push(cmd);
-      return Promise.reject(new Error('DLQ unavailable'));
-    } };
-    const worker = new SqsWagerConsumer(sqs as never, queues, { processFromInbox: () => Promise.resolve({} as never) });
+    const sqs = {
+      send: (cmd: SentCommand) => {
+        commands.push(cmd);
+        return Promise.reject(new Error('DLQ unavailable'));
+      },
+    };
+    const worker = new SqsWagerConsumer(sqs as never, queues, {
+      processFromInbox: () => Promise.resolve({} as never),
+    });
     let caught: unknown;
-    try { await worker.processOne(message('broken')); } catch (error: unknown) { caught = error; }
+    try {
+      await worker.processOne(message('broken'));
+    } catch (error: unknown) {
+      caught = error;
+    }
     expect(caught).toBeInstanceOf(Error);
     expect(commands).toHaveLength(1);
     expect(commands[0]).toBeInstanceOf(SendMessageCommand);
   });
   it('never DLQs a committed wager if the SQS DeleteMessage acknowledgement fails', async () => {
     const sent: SentCommand[] = [];
-    const sqs = { send: (command: SentCommand) => {
-      sent.push(command);
-      return Promise.reject(new Error('ack transport unavailable'));
-    } };
+    const sqs = {
+      send: (command: SentCommand) => {
+        sent.push(command);
+        return Promise.reject(new Error('ack transport unavailable'));
+      },
+    };
     const worker = new SqsWagerConsumer(sqs as never, queues, {
       processFromInbox: () => Promise.resolve({} as never),
     });
     let caught: unknown;
-    try { await worker.processOne(message()); } catch (error: unknown) { caught = error; }
+    try {
+      await worker.processOne(message());
+    } catch (error: unknown) {
+      caught = error;
+    }
     expect(caught).toBeInstanceOf(Error);
     expect(sent).toHaveLength(1);
     expect(sent[0]).toBeInstanceOf(DeleteMessageCommand);
   });
   it('releases unstarted deliveries during SIGTERM without touching PostgreSQL', async () => {
-    const { worker, sent } = setup(() => { throw new Error('should not run'); });
+    const { worker, sent } = setup(() => {
+      throw new Error('should not run');
+    });
     const controller = new AbortController();
     controller.abort();
     expect(await worker.processOne(message(), controller.signal)).toBe('released');
@@ -118,16 +161,18 @@ describe('SQS wager worker delivery policy', () => {
     const { worker, sent } = setup(() => Promise.resolve(), [message(), message(payload())]);
     expect(await worker.runOnce()).toEqual(['ack', 'ack']);
     expect(sent[0]).toBeInstanceOf(ReceiveMessageCommand);
-    expect(sent.filter(cmd => cmd instanceof DeleteMessageCommand)).toHaveLength(2);
+    expect(sent.filter((cmd) => cmd instanceof DeleteMessageCommand)).toHaveLength(2);
   });
   it('waits for every delivery to settle before reporting a batch failure', async () => {
     let completed = false;
     const source = [message('invalid-body'), message(payload())];
-    const sqs = { send: (cmd: SentCommand): Promise<unknown> => {
-      if (cmd instanceof ReceiveMessageCommand) return Promise.resolve({ Messages: source });
-      if (cmd instanceof SendMessageCommand) return Promise.reject(new Error('DLQ down'));
-      return Promise.resolve({});
-    } };
+    const sqs = {
+      send: (cmd: SentCommand): Promise<unknown> => {
+        if (cmd instanceof ReceiveMessageCommand) return Promise.resolve({ Messages: source });
+        if (cmd instanceof SendMessageCommand) return Promise.reject(new Error('DLQ down'));
+        return Promise.resolve({});
+      },
+    };
     const worker = new SqsWagerConsumer(sqs as never, queues, {
       processFromInbox: async () => {
         await Promise.resolve();
@@ -136,7 +181,11 @@ describe('SQS wager worker delivery policy', () => {
       },
     });
     let failed: unknown;
-    try { await worker.runOnce(); } catch (e: unknown) { failed = e; }
+    try {
+      await worker.runOnce();
+    } catch (e: unknown) {
+      failed = e;
+    }
     expect(failed).toBeInstanceOf(AggregateError);
     expect(completed).toBe(true);
   });

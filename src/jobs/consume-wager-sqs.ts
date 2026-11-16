@@ -14,16 +14,20 @@ async function main(): Promise<void> {
   try {
     const [incoming, deadLetter] = await Promise.all([
       sqsQueueUrl(
-        client, process.env.SQS_WAGER_TRANSACTIONS_URL,
+        client,
+        process.env.SQS_WAGER_TRANSACTIONS_URL,
         process.env.SQS_WAGER_TRANSACTIONS_QUEUE_NAME ?? 'wager-transactions.fifo',
       ),
       sqsQueueUrl(
-        client, process.env.SQS_WAGER_TRANSACTIONS_DLQ_URL,
+        client,
+        process.env.SQS_WAGER_TRANSACTIONS_DLQ_URL,
         process.env.SQS_WAGER_TRANSACTIONS_DLQ_NAME ?? 'wager-transactions-dlq.fifo',
       ),
     ]);
     const consumer = new SqsWagerConsumer(
-      client, { incoming, deadLetter }, new ProcessWager(orm.em),
+      client,
+      { incoming, deadLetter },
+      new ProcessWager(orm.em),
     );
     // No new receives after SIGTERM. Wait for ongoing SQL + ack/DLQ operations
     // before closing the connection pool; SQS visibility recovers forced kills.

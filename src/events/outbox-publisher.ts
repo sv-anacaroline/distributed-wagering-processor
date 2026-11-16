@@ -21,7 +21,10 @@ export interface PublishCycle {
 }
 export const OUTBOX_LEASE_SECONDS = 45;
 
-export function eventMessage(event: Pick<ClaimedEvent, 'id' | 'aggregate_id' | 'payload'>, url: string): SendMessageCommand {
+export function eventMessage(
+  event: Pick<ClaimedEvent, 'id' | 'aggregate_id' | 'payload'>,
+  url: string,
+): SendMessageCommand {
   return new SendMessageCommand({
     QueueUrl: url,
     MessageBody: JSON.stringify(event.payload),
@@ -80,9 +83,12 @@ export class OutboxPublisher {
     try {
       await this.sqs.send(eventMessage(event, this.queueUrl));
       const state = OutboxMessage.rehydrate({
-        id: event.id, aggregateId: event.aggregate_id,
-        eventType: event.event_type, payload: event.payload,
-        occurredAt: new Date(event.occurred_at), attempts: event.attempts,
+        id: event.id,
+        aggregateId: event.aggregate_id,
+        eventType: event.event_type,
+        payload: event.payload,
+        occurredAt: new Date(event.occurred_at),
+        attempts: event.attempts,
       });
       state.markPublished(new Date(Math.max(now.getTime(), state.occurredAt.getTime())));
       const result = await this.em.fork().execute<{ affectedRows?: number }>(
@@ -91,16 +97,20 @@ export class OutboxPublisher {
              claimed_by=null,claim_expires_at=null,next_attempt_at=null
          where id=?::uuid and claimed_by=? and published_at is null
            and claim_expires_at > clock_timestamp()`,
-        [event.id, event.claimToken], 'run',
+        [event.id, event.claimToken],
+        'run',
       );
       // An expired lease may lead to another publish: consumer eventId dedup
       // remains the authoritative safety net beyond the SQS 5-minute window.
       return result.affectedRows === 1;
     } catch (error: unknown) {
       const state = OutboxMessage.rehydrate({
-        id: event.id, aggregateId: event.aggregate_id,
-        eventType: event.event_type, payload: event.payload,
-        occurredAt: new Date(event.occurred_at), attempts: event.attempts,
+        id: event.id,
+        aggregateId: event.aggregate_id,
+        eventType: event.event_type,
+        payload: event.payload,
+        occurredAt: new Date(event.occurred_at),
+        attempts: event.attempts,
       });
       state.scheduleRetry(new Date(Math.max(Date.now(), state.occurredAt.getTime())));
       await this.em.fork().execute(
@@ -144,8 +154,11 @@ export class OutboxPublisher {
       } catch (error: unknown) {
         console.error('Outbox publish iteration failed; leases will recover', error);
       }
-      try { await sleep(intervalMs, undefined, { signal }); }
-      catch { if (signal.aborted) break; }
+      try {
+        await sleep(intervalMs, undefined, { signal });
+      } catch {
+        if (signal.aborted) break;
+      }
     }
   }
 }

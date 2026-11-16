@@ -4,8 +4,12 @@ import { MikroORM } from '@mikro-orm/postgresql';
 import config from '../src/mikro-orm.config.js';
 
 let orm: MikroORM;
-beforeAll(async () => { orm = await MikroORM.init(config); });
-afterAll(async () => { await orm.close(true); });
+beforeAll(async () => {
+  orm = await MikroORM.init(config);
+});
+afterAll(async () => {
+  await orm.close(true);
+});
 
 describe('SQS Inbox and Outbox SQL invariants', () => {
   it('preserves the per-wallet unpublished-head index', async () => {
@@ -25,12 +29,15 @@ describe('SQS Inbox and Outbox SQL invariants', () => {
       [consumer, id, 'original-hash'],
     );
     for (const sql of [
-      'update inbox_messages set payload_hash=\'mutated\' where consumer_name=? and message_id=?',
+      "update inbox_messages set payload_hash='mutated' where consumer_name=? and message_id=?",
       'update inbox_messages set processed_at=null where consumer_name=? and message_id=?',
     ]) {
       let rejected = false;
-      try { await orm.em.execute(sql, [consumer, id]); }
-      catch { rejected = true; }
+      try {
+        await orm.em.execute(sql, [consumer, id]);
+      } catch {
+        rejected = true;
+      }
       expect(rejected).toBe(true);
     }
     const [row] = await orm.em.execute<Array<{ payload_hash: string; processed_at: Date | null }>>(

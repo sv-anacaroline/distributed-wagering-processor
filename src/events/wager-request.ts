@@ -49,7 +49,7 @@ function canonical(value: unknown): unknown {
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([key, child]) => [key, canonical(child)]),
     );
   }
@@ -73,9 +73,11 @@ export function parseWagerRequest(body: string): WagerRequest {
   if (envelope.type !== 'WagerTransactionRequested') {
     throw new InvalidSqsMessageError('Unsupported integration message type');
   }
-  if (typeof envelope.occurredAt !== 'string' ||
-      !Number.isFinite(Date.parse(envelope.occurredAt)) ||
-      new Date(envelope.occurredAt).toISOString() !== envelope.occurredAt) {
+  if (
+    typeof envelope.occurredAt !== 'string' ||
+    !Number.isFinite(Date.parse(envelope.occurredAt)) ||
+    new Date(envelope.occurredAt).toISOString() !== envelope.occurredAt
+  ) {
     throw new InvalidSqsMessageError('occurredAt must be ISO-8601 with milliseconds');
   }
   const data = record(envelope.data, 'data');
@@ -84,28 +86,40 @@ export function parseWagerRequest(body: string): WagerRequest {
   }
   const kind = data.kind as Exclude<WagerTransactionKind, WagerTransactionKind.Opening>;
   const idempotencyKey = data.idempotencyKey;
-  if (typeof idempotencyKey !== 'string' || idempotencyKey.trim().length === 0 ||
-      idempotencyKey.length > 256) {
+  if (
+    typeof idempotencyKey !== 'string' ||
+    idempotencyKey.trim().length === 0 ||
+    idempotencyKey.length > 256
+  ) {
     throw new InvalidSqsMessageError('idempotencyKey must be present (max 256 chars)');
   }
   const moneyFields = record(data.money, 'money');
   let money: ReturnType<Money['toJSON']>;
   try {
     const amount = Money.from({
-      amount: moneyFields.amount as string, currency: moneyFields.currency as string,
+      amount: moneyFields.amount as string,
+      currency: moneyFields.currency as string,
     });
     if (!amount.isPositive()) throw new Error('Non-positive wager money');
     money = amount.toJSON();
   } catch {
     throw new InvalidSqsMessageError('money must be positive, exact decimal string with currency');
   }
-  const reference = data.referenceExternalTransactionId === undefined
-    ? undefined
-    : token(data.referenceExternalTransactionId, 'referenceExternalTransactionId');
+  const reference =
+    data.referenceExternalTransactionId === undefined
+      ? undefined
+      : token(data.referenceExternalTransactionId, 'referenceExternalTransactionId');
   if ([WagerTransactionKind.Refund, WagerTransactionKind.Rollback].includes(kind) && !reference) {
     throw new InvalidSqsMessageError('REFUND/ROLLBACK must contain referenceExternalTransactionId');
   }
-  if (reference && ![WagerTransactionKind.Refund, WagerTransactionKind.Rollback, WagerTransactionKind.Win].includes(kind)) {
+  if (
+    reference &&
+    ![
+      WagerTransactionKind.Refund,
+      WagerTransactionKind.Rollback,
+      WagerTransactionKind.Win,
+    ].includes(kind)
+  ) {
     throw new InvalidSqsMessageError('Reference not supported by this kind');
   }
   const command: WagerCommand = {
@@ -123,7 +137,14 @@ export function parseWagerRequest(body: string): WagerRequest {
   if (reference === command.externalTransactionId) {
     throw new InvalidSqsMessageError('Message cannot reference itself');
   }
-  const logical = { messageId, type: 'WagerTransactionRequested', occurredAt: envelope.occurredAt, data: command };
-  const payloadHash = createHash('sha256').update(JSON.stringify(canonical(logical))).digest('hex');
+  const logical = {
+    messageId,
+    type: 'WagerTransactionRequested',
+    occurredAt: envelope.occurredAt,
+    data: command,
+  };
+  const payloadHash = createHash('sha256')
+    .update(JSON.stringify(canonical(logical)))
+    .digest('hex');
   return { messageId, occurredAt: envelope.occurredAt, command, payloadHash };
 }

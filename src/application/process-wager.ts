@@ -85,11 +85,7 @@ export class IdempotencyConflictError extends DomainError {
     );
   }
 }
-async function reserveInbox(
-  em: EntityManager,
-  receipt: InboxReceipt,
-  at: Date,
-): Promise<boolean> {
+async function reserveInbox(em: EntityManager, receipt: InboxReceipt, at: Date): Promise<boolean> {
   const inbox = InboxMessage.receive({
     consumerName: receipt.consumerName,
     messageId: receipt.messageId,
@@ -369,7 +365,10 @@ export class ProcessWager {
     return (await this.processRecorded(cmd, receipt)).result;
   }
 
-  private async processRecorded(cmd: WagerCommand, receipt?: InboxReceipt): Promise<{
+  private async processRecorded(
+    cmd: WagerCommand,
+    receipt?: InboxReceipt,
+  ): Promise<{
     result: WagerResult;
     idempotentReplay: boolean;
   }> {

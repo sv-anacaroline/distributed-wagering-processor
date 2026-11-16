@@ -3,11 +3,16 @@ import { randomUUID } from 'node:crypto';
 import { MikroORM } from '@mikro-orm/postgresql';
 import config from '../src/mikro-orm.config.js';
 import {
-  InboxPayloadConflictError, ProcessWager, IdempotencyConflictError,
+  InboxPayloadConflictError,
+  ProcessWager,
+  IdempotencyConflictError,
 } from '../src/application/process-wager.js';
 import { WalletService } from '../src/http/wallet.service.js';
 import type { WagerCommand } from '../src/application/wager-contracts.js';
-import { WagerTransactionKind as Kind, WagerTransactionStatus as Status } from '../src/domain/wager-transaction.js';
+import {
+  WagerTransactionKind as Kind,
+  WagerTransactionStatus as Status,
+} from '../src/domain/wager-transaction.js';
 
 let orm: MikroORM;
 let processor: ProcessWager;
@@ -15,33 +20,53 @@ beforeAll(async () => {
   orm = await MikroORM.init(config);
   processor = new ProcessWager(orm.em);
 });
-afterAll(async () => { await orm.close(true); });
+afterAll(async () => {
+  await orm.close(true);
+});
 
 async function wallet(initial = '100.00') {
   const playerId = randomUUID();
-  const opened = await new WalletService(orm.em).create(
-    playerId, { amount: initial, currency: 'BRL' },
-  );
+  const opened = await new WalletService(orm.em).create(playerId, {
+    amount: initial,
+    currency: 'BRL',
+  });
   return { walletId: opened.id, playerId };
 }
-function command(w: { walletId: string; playerId: string }, kind: Exclude<Kind, Kind.Opening> = Kind.Bet): WagerCommand {
+function command(
+  w: { walletId: string; playerId: string },
+  kind: Exclude<Kind, Kind.Opening> = Kind.Bet,
+): WagerCommand {
   const externalTransactionId = randomUUID();
   return {
-    providerId: 'provider-a', externalTransactionId,
+    providerId: 'provider-a',
+    externalTransactionId,
     idempotencyKey: 'provider-a:' + externalTransactionId,
-    walletId: w.walletId, playerId: w.playerId, roundId: 'round1', gameId: 'game1',
-    kind, money: { amount: '25.00', currency: 'BRL' },
+    walletId: w.walletId,
+    playerId: w.playerId,
+    roundId: 'round1',
+    gameId: 'game1',
+    kind,
+    money: { amount: '25.00', currency: 'BRL' },
   };
 }
 const receipt = (id = randomUUID(), payloadHash = 'business-envelope-hash') => ({
-  messageId: id, consumerName: 'wager-request-consumer', payloadHash,
+  messageId: id,
+  consumerName: 'wager-request-consumer',
+  payloadHash,
 });
-async function count(table: 'inbox_messages' | 'wager_transactions' | 'wallet_ledger_entries' | 'outbox_messages', walletId: string): Promise<number> {
-  const query = table === 'inbox_messages'
-    ? `select count(*)::integer as n from inbox_messages where consumer_name='wager-request-consumer' and message_id in
+async function count(
+  table: 'inbox_messages' | 'wager_transactions' | 'wallet_ledger_entries' | 'outbox_messages',
+  walletId: string,
+): Promise<number> {
+  const query =
+    table === 'inbox_messages'
+      ? `select count(*)::integer as n from inbox_messages where consumer_name='wager-request-consumer' and message_id in
       (select message_id from inbox_messages where consumer_name='wager-request-consumer')`
-    : `select count(*)::integer as n from ${table} where ${table === 'outbox_messages' ? 'aggregate_id' : 'wallet_id'}=?::uuid`;
-  const [row] = await orm.em.execute<Array<{ n: number }>>(query, table === 'inbox_messages' ? [] : [walletId]);
+      : `select count(*)::integer as n from ${table} where ${table === 'outbox_messages' ? 'aggregate_id' : 'wallet_id'}=?::uuid`;
+  const [row] = await orm.em.execute<Array<{ n: number }>>(
+    query,
+    table === 'inbox_messages' ? [] : [walletId],
+  );
   return row?.n ?? 0;
 }
 async function inbox(messageId: string) {
@@ -99,7 +124,9 @@ describe('SQS Inbox + wager + ledger + outbox atomic commit', () => {
     let failure: unknown;
     try {
       await processor.processFromInbox(wager, { ...original, payloadHash: 'tampered' });
-    } catch (error: unknown) { failure = error; }
+    } catch (error: unknown) {
+      failure = error;
+    }
     expect(failure).toBeInstanceOf(InboxPayloadConflictError);
     expect(await count('wallet_ledger_entries', w.walletId)).toBe(2);
   });
@@ -110,8 +137,13 @@ describe('SQS Inbox + wager + ledger + outbox atomic commit', () => {
     const again = receipt();
     let failure: unknown;
     try {
-      await processor.processFromInbox({ ...wager, money: { amount: '1.00', currency: 'BRL' } }, again);
-    } catch (error: unknown) { failure = error; }
+      await processor.processFromInbox(
+        { ...wager, money: { amount: '1.00', currency: 'BRL' } },
+        again,
+      );
+    } catch (error: unknown) {
+      failure = error;
+    }
     expect(failure).toBeInstanceOf(IdempotencyConflictError);
     expect(await inbox(again.messageId)).toBeUndefined();
     expect(await count('outbox_messages', w.walletId)).toBe(2);
@@ -131,13 +163,16 @@ describe('SQS Inbox + wager + ledger + outbox atomic commit', () => {
     let failure: unknown;
     try {
       await processor.processFromInbox(command(w, Kind.Win), metadata);
-    } catch (error: unknown) { failure = error; }
+    } catch (error: unknown) {
+      failure = error;
+    }
     expect(failure).toBeInstanceOf(Error);
     expect(await inbox(metadata.messageId)).toBeUndefined();
     expect(await count('outbox_messages', w.walletId)).toBe(0);
     expect(await count('wallet_ledger_entries', w.walletId)).toBe(1);
     const [row] = await orm.em.execute<Array<{ balance: string }>>(
-      'select balance::text as balance from wallets where id=?::uuid', [w.walletId],
+      'select balance::text as balance from wallets where id=?::uuid',
+      [w.walletId],
     );
     expect(row?.balance).toBe('999999999999999999.99');
   });
@@ -145,9 +180,13 @@ describe('SQS Inbox + wager + ledger + outbox atomic commit', () => {
     const w = await wallet();
     const refunded = command(w, Kind.Refund);
     const meta = receipt();
-    const pending = await processor.processFromInbox({
-      ...refunded, referenceExternalTransactionId: 'absent-bet',
-    }, meta);
+    const pending = await processor.processFromInbox(
+      {
+        ...refunded,
+        referenceExternalTransactionId: 'absent-bet',
+      },
+      meta,
+    );
     expect(pending.status).toBe(Status.PendingReference);
     expect((await inbox(meta.messageId))?.processed_at).toBeTruthy();
     expect(await count('wallet_ledger_entries', w.walletId)).toBe(1);
