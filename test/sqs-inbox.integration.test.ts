@@ -24,7 +24,7 @@ async function wallet(initial = '100.00') {
   );
   return { walletId: opened.id, playerId };
 }
-function command(w: { walletId: string; playerId: string }, kind = Kind.Bet): WagerCommand {
+function command(w: { walletId: string; playerId: string }, kind: Exclude<Kind, Kind.Opening> = Kind.Bet): WagerCommand {
   const externalTransactionId = randomUUID();
   return {
     providerId: 'provider-a', externalTransactionId,
@@ -73,7 +73,7 @@ describe('SQS Inbox + wager + ledger + outbox atomic commit', () => {
       Array.from({ length: 25 }, () => processor.processFromInbox(wager, metadata)),
     );
     const first = results[0];
-    expect(first).toBeDefined();
+    if (!first) throw new Error('Missing first response');
     for (const replay of results) expect(replay).toEqual(first);
     expect(await count('wallet_ledger_entries', w.walletId)).toBe(2);
     expect(await count('outbox_messages', w.walletId)).toBe(2);

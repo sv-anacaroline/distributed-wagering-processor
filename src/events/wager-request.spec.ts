@@ -18,7 +18,7 @@ describe('WagerTransactionRequested contract', () => {
     const input = envelope();
     const first = parseWagerRequest(JSON.stringify(input));
     const reordered = {
-      data: { money: { currency: 'BRL', amount: '25.00' }, ...input.data },
+      data: { ...input.data, money: { currency: 'BRL', amount: '25.00' } },
       occurredAt: input.occurredAt, type: input.type, messageId: input.messageId,
     };
     expect(parseWagerRequest(JSON.stringify(reordered)).payloadHash).toBe(first.payloadHash);
