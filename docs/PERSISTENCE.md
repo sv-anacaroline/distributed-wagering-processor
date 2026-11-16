@@ -56,6 +56,15 @@ Durante desenvolvimento com o Compose, ao executar os comandos no host, a conex�
 
 Os arquivos `.ts` das migrations ficam em `src/migrations/` e compilam para `dist/migrations/` para execução posterior; snapshots gerados devem ser versionados junto das migrations.
 
+## Migração adicional da seção 7
+
+`Migration20261116213000.ts` define o agendamento de
+`PENDING_REFERENCE`, índice parcial de reversões ativas que protege também
+compensações cruzadas entre REFUND e ROLLBACK e trigger de integridade de
+referências resolvidas. Inclui `down()` para ambientes com dados históricos:
+não recria o índice antigo que bloqueava até reversões rejeitadas.
+A reversão de schema é **diferente de ROLLBACK financeiro**.
+
 ## CI / CD
 
 O workflow GitHub Actions (em `.github/workflows/ci.yml`) roda qualidade e build em PRs/push na `master`, utilizando um serviço PostgreSQL descartável. O segundo job **apenas imprime os passos futuros** (Terraform plan, imagem ECR, migrations, deployment EKS, smoke test), sem autenticar em AWS ou aplicar qualquer alteração. A implantação real ficará para outra tarefa, com credenciais temporárias e aprovações.
