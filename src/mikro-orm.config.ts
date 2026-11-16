@@ -5,8 +5,7 @@ import { defineConfig } from '@mikro-orm/postgresql';
 
 // The domain entities will be introduced in subsequent, isolated tasks.
 // These paths work for the Bun TypeScript CLI and compiled EKS/production code.
-const dbPassword =
-  process.env.DB_PASSWORD ?? process.env.POSTGRES_PASSWORD;
+const dbPassword = process.env.DB_PASSWORD ?? process.env.POSTGRES_PASSWORD;
 
 if (process.env.NODE_ENV === 'production' && !dbPassword) {
   throw new Error('DB_PASSWORD must be configured in production');
