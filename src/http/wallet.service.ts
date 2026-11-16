@@ -71,7 +71,7 @@ export class WalletService {
     const at = new Date();
     const wallet = Wallet.open({ id, playerId, initialBalance: balance, at });
     try {
-      return await this.em.fork().transactional(async em => {
+      return await this.em.fork().transactional(async (em) => {
         await em.execute(
           `insert into wallets(id,player_id,currency,balance,version,created_at,updated_at)
            values(?::uuid,?::uuid,?,?::numeric,1,?,?)`,
@@ -80,17 +80,30 @@ export class WalletService {
         if (balance.isPositive()) {
           const transactionId = randomUUID();
           const tx = WagerTransaction.opening({
-            id: transactionId, providerId: 'internal',
-            externalTransactionId: transactionId, idempotencyKey: `opening:${id}`,
-            payloadHash: createHash('sha256').update(`opening:${id}:${balance.toString()}`).digest('hex'),
-            walletId: id, playerId, roundId: 'opening', gameId: 'internal',
-            money: balance, createdAt: at,
+            id: transactionId,
+            providerId: 'internal',
+            externalTransactionId: transactionId,
+            idempotencyKey: `opening:${id}`,
+            payloadHash: createHash('sha256')
+              .update(`opening:${id}:${balance.toString()}`)
+              .digest('hex'),
+            walletId: id,
+            playerId,
+            roundId: 'opening',
+            gameId: 'internal',
+            money: balance,
+            createdAt: at,
           });
           tx.markProcessed(undefined, at);
           const ledger = WalletLedgerEntry.create({
-            id: randomUUID(), walletId: id, transactionId: tx.id,
-            direction: LedgerDirection.Credit, money: balance,
-            balanceBefore: Money.zero(wallet.currency), balanceAfter: balance, createdAt: at,
+            id: randomUUID(),
+            walletId: id,
+            transactionId: tx.id,
+            direction: LedgerDirection.Credit,
+            money: balance,
+            balanceBefore: Money.zero(wallet.currency),
+            balanceAfter: balance,
+            createdAt: at,
           });
           await em.execute(
             `insert into wager_transactions(
@@ -99,9 +112,21 @@ export class WalletService {
                status,created_at,processed_at
              ) values (?::uuid,?,?,?,?,?::uuid,?::uuid,?,?,?,?::numeric,?,?,?,?)`,
             [
-              tx.id, tx.providerId, tx.externalTransactionId, tx.idempotencyKey, tx.payloadHash,
-              id, playerId, tx.roundId, tx.gameId, tx.kind, balance.toJSON().amount,
-              wallet.currency, tx.status, at, tx.processedAt,
+              tx.id,
+              tx.providerId,
+              tx.externalTransactionId,
+              tx.idempotencyKey,
+              tx.payloadHash,
+              id,
+              playerId,
+              tx.roundId,
+              tx.gameId,
+              tx.kind,
+              balance.toJSON().amount,
+              wallet.currency,
+              tx.status,
+              at,
+              tx.processedAt,
             ],
           );
           await em.execute(
@@ -110,14 +135,22 @@ export class WalletService {
                balance_before,balance_after,created_at
              ) values (?::uuid,?::uuid,?::uuid,1,?,?::numeric,?,?::numeric,?::numeric,?)`,
             [
-              ledger.id, id, transactionId, ledger.direction,
-              ledger.money.toJSON().amount, wallet.currency,
-              ledger.balanceBefore.toJSON().amount, ledger.balanceAfter.toJSON().amount, ledger.createdAt,
+              ledger.id,
+              id,
+              transactionId,
+              ledger.direction,
+              ledger.money.toJSON().amount,
+              wallet.currency,
+              ledger.balanceBefore.toJSON().amount,
+              ledger.balanceAfter.toJSON().amount,
+              ledger.createdAt,
             ],
           );
         }
         return {
-          id: wallet.id, playerId: wallet.playerId, balance: wallet.balance.toJSON(),
+          id: wallet.id,
+          playerId: wallet.playerId,
+          balance: wallet.balance.toJSON(),
           version: wallet.version,
         };
       });
@@ -130,15 +163,21 @@ export class WalletService {
   }
 
   async find(walletId: string): Promise<WalletView> {
-    const [row] = await this.em.fork().execute<WalletRow[]>(
-      'select id,player_id,currency,balance::text as balance,version,created_at from wallets where id=?::uuid',
-      [walletId],
-    );
+    const [row] = await this.em
+      .fork()
+      .execute<WalletRow[]>(
+        'select id,player_id,currency,balance::text as balance,version,created_at from wallets where id=?::uuid',
+        [walletId],
+      );
     if (!row) throw new NotFoundException('Wallet not found');
     return walletView(row);
   }
 
-  async ledger(walletId: string, limit: number, cursor?: string): Promise<{
+  async ledger(
+    walletId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<{
     items: LedgerView[];
     nextCursor: string | null;
   }> {
@@ -149,22 +188,32 @@ export class WalletService {
       from wallet_ledger_entries where wallet_id=?::uuid
       ${at ? 'and (created_at,id) < (?::timestamptz,?::uuid)' : ''}
       order by created_at desc,id desc limit ?`;
-    const result = await this.em.fork().execute<LedgerRow[]>(
-      query, at ? [walletId, at.createdAt, at.id, limit + 1] : [walletId, limit + 1],
-    );
+    const result = await this.em
+      .fork()
+      .execute<LedgerRow[]>(
+        query,
+        at ? [walletId, at.createdAt, at.id, limit + 1] : [walletId, limit + 1],
+      );
     const page = result.slice(0, limit);
     const last = page.at(-1);
     return {
-      items: page.map(row => ({
-        id: row.id, transactionId: row.transaction_id, direction: row.direction,
+      items: page.map((row) => ({
+        id: row.id,
+        transactionId: row.transaction_id,
+        direction: row.direction,
         money: { amount: row.amount, currency: row.currency },
         balanceBefore: { amount: row.balance_before, currency: row.currency },
         balanceAfter: { amount: row.balance_after, currency: row.currency },
         createdAt: new Date(row.created_at).toISOString(),
       })),
-      nextCursor: result.length > limit && last
-        ? encodeLedgerCursor({ walletId, id: last.id, createdAt: new Date(last.created_at).toISOString() })
-        : null,
+      nextCursor:
+        result.length > limit && last
+          ? encodeLedgerCursor({
+              walletId,
+              id: last.id,
+              createdAt: new Date(last.created_at).toISOString(),
+            })
+          : null,
     };
   }
 }

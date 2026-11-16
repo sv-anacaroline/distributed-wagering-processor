@@ -17,9 +17,13 @@ describe('signed opaque ledger cursor', () => {
   });
   it('rejects tampered signatures, broken input and another wallet', () => {
     const token = encodeLedgerCursor(value);
-    expect(() => decodeLedgerCursor(token.slice(0, -1) + 'A', walletId)).toThrow(BadRequestException);
+    expect(() => decodeLedgerCursor(token.slice(0, -1) + 'A', walletId)).toThrow(
+      BadRequestException,
+    );
     expect(() => decodeLedgerCursor('broken', walletId)).toThrow(BadRequestException);
-    expect(() => decodeLedgerCursor(token, '0192f291-27dd-7d3f-8071-5f8685deef39')).toThrow(BadRequestException);
+    expect(() => decodeLedgerCursor(token, '0192f291-27dd-7d3f-8071-5f8685deef39')).toThrow(
+      BadRequestException,
+    );
   });
   it('rejects a signed but invalid payload', () => {
     const token = encodeLedgerCursor({ ...value, createdAt: 'not-a-date' });

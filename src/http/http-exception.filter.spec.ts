@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { InvalidMoneyError, DomainError } from '../domain/errors.js';
 import { IdempotencyConflictError } from '../application/process-wager.js';
 import { HttpExceptionFilter, httpError } from './http-exception.filter.js';
@@ -9,7 +14,8 @@ describe('stable HTTP error taxonomy', () => {
     expect(httpError(new BadRequestException()).status).toBe(400);
     expect(httpError(new InvalidMoneyError('invalid')).status).toBe(400);
     expect(httpError(new IdempotencyConflictError())).toMatchObject({
-      status: 409, code: 'IDEMPOTENCY_CONFLICT',
+      status: 409,
+      code: 'IDEMPOTENCY_CONFLICT',
     });
     expect(httpError(new ConflictException()).status).toBe(409);
     expect(httpError(new NotFoundException()).status).toBe(404);
@@ -26,8 +32,14 @@ describe('HTTP exception filter response', () => {
   it('preserves readiness dependency status while exposing a machine-readable error code', () => {
     const sent: { status?: number; body?: unknown } = {};
     const res = {
-      status: (value: number) => { sent.status = value; return res; },
-      json: (value: unknown) => { sent.body = value; return res; },
+      status: (value: number) => {
+        sent.status = value;
+        return res;
+      },
+      json: (value: unknown) => {
+        sent.body = value;
+        return res;
+      },
     };
     const host = { switchToHttp: () => ({ getResponse: () => res }) };
     new HttpExceptionFilter().catch(
@@ -36,7 +48,10 @@ describe('HTTP exception filter response', () => {
     );
     expect(sent.status).toBe(503);
     expect(sent.body).toMatchObject({
-      statusCode: 503, code: 'INFRASTRUCTURE_UNAVAILABLE', postgres: 'up', sqs: 'down',
+      statusCode: 503,
+      code: 'INFRASTRUCTURE_UNAVAILABLE',
+      postgres: 'up',
+      sqs: 'down',
     });
   });
   it('returns a stable 422 code for business-domain exceptions', () => {

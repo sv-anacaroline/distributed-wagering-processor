@@ -29,11 +29,19 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
   ],
   controllers: [
-    AppController, WalletController, WagerController, ProviderWagerController,
-    HealthController, MetricsController,
+    AppController,
+    WalletController,
+    WagerController,
+    ProviderWagerController,
+    HealthController,
+    MetricsController,
   ],
   providers: [
-    AppService, WalletService, WagerService, ReconciliationService, HealthService,
+    AppService,
+    WalletService,
+    WagerService,
+    ReconciliationService,
+    HealthService,
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
   ],
 })

@@ -1,5 +1,13 @@
 import {
-  BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards,
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  UseGuards,
 } from '@nestjs/common';
 import { OidcAuthGuard } from './oidc.guard.js';
 import { WalletService } from './wallet.service.js';
@@ -43,4 +51,3 @@ export class WalletController {
     return this.reconciliation.run(uuidField(id, 'walletId'));
   }
 }
-

@@ -39,14 +39,22 @@ const wager = (wallet: WalletView, kind = 'BET', amount = '25.00') => ({
   money: { amount, currency: 'BRL' },
 });
 async function createWallet(amount = '1000.00'): Promise<WalletView> {
-  const response = await request(http).post('/wallets')
+  const response = await request(http)
+    .post('/wallets')
     .send({ playerId: uid(), initialBalance: { amount, currency: 'BRL' } })
     .expect(201);
   return response.body as WalletView;
 }
-async function submit(body: Record<string, unknown>, key: string, status: number): Promise<WagerView> {
-  const response = await request(http).post('/wagering/transactions')
-    .set('Idempotency-Key', key).send(body).expect(status);
+async function submit(
+  body: Record<string, unknown>,
+  key: string,
+  status: number,
+): Promise<WagerView> {
+  const response = await request(http)
+    .post('/wagering/transactions')
+    .set('Idempotency-Key', key)
+    .send(body)
+    .expect(status);
   return response.body as WagerView;
 }
 
@@ -64,7 +72,8 @@ afterAll(async () => {
 describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', () => {
   it('creates a funded wallet, its internal OPENING and exactly one CREDIT ledger atomically', async () => {
     const playerId = uid();
-    const created = await request(http).post('/wallets')
+    const created = await request(http)
+      .post('/wallets')
       .send({ playerId, initialBalance: { amount: '1000.00', currency: 'BRL' } })
       .expect(201);
     const wallet = created.body as WalletView;
@@ -80,7 +89,8 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
     expect(entries.items[0]?.direction).toBe('CREDIT');
     expect(entries.items[0]?.money.amount).toBe('1000.00');
 
-    await request(http).post('/wallets')
+    await request(http)
+      .post('/wallets')
       .send({ playerId, initialBalance: { amount: '1.00', currency: 'BRL' } })
       .expect(409);
   });
@@ -93,16 +103,19 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
   });
 
   it('rejects invalid wallet amounts, IDs and a missing idempotency header', async () => {
-    await request(http).post('/wallets')
+    await request(http)
+      .post('/wallets')
       .send({ playerId: uid(), initialBalance: { amount: 1e3, currency: 'BRL' } })
       .expect(400);
     await request(http).get('/wallets/not-a-uuid').expect(400);
     await request(http).get(`/wallets/${uid()}`).expect(404);
     const wallet = await createWallet();
-    await request(http).post('/wagering/transactions')
-      .send(wager(wallet)).expect(400);
-    await request(http).post('/wagering/transactions').set('Idempotency-Key', uid())
-      .send({ ...wager(wallet), kind: 'OPENING' }).expect(400);
+    await request(http).post('/wagering/transactions').send(wager(wallet)).expect(400);
+    await request(http)
+      .post('/wagering/transactions')
+      .set('Idempotency-Key', uid())
+      .send({ ...wager(wallet), kind: 'OPENING' })
+      .expect(400);
   });
 
   it('processes BET, replays the exact original response, and rejects changed payload hashes', async () => {
@@ -121,13 +134,16 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
     expect(replay.balance.amount).toBe('975.00');
     expect(replay.walletVersion).toBe(first.walletVersion);
     expect(replay.transactionId).toBe(first.transactionId);
-    const conflict = await request(http).post('/wagering/transactions')
-      .set('Idempotency-Key', key).send({ ...command, money: { amount: '24.00', currency: 'BRL' } })
+    const conflict = await request(http)
+      .post('/wagering/transactions')
+      .set('Idempotency-Key', key)
+      .send({ ...command, money: { amount: '24.00', currency: 'BRL' } })
       .expect(409);
     expect((conflict.body as { code: string }).code).toBe('IDEMPOTENCY_CONFLICT');
 
     const internal = await request(http)
-      .get(`/wagering/transactions/${first.transactionId}`).expect(200);
+      .get(`/wagering/transactions/${first.transactionId}`)
+      .expect(200);
     expect((internal.body as { status: string }).status).toBe('PROCESSED');
     const external = await request(http)
       .get(`/providers/provider-a/wagering/transactions/${command.externalTransactionId}`)
@@ -144,13 +160,18 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
     const loss = await submit(wager(wallet, 'LOSS'), uid(), 200);
     expect(loss.status).toBe('PROCESSED');
     expect(loss.walletVersion).toBe(1);
-    const pending = await submit({
-      ...wager(wallet, 'REFUND'),
-      referenceExternalTransactionId: 'bet-not-yet-seen',
-    }, uid(), 202);
+    const pending = await submit(
+      {
+        ...wager(wallet, 'REFUND'),
+        referenceExternalTransactionId: 'bet-not-yet-seen',
+      },
+      uid(),
+      202,
+    );
     expect(pending.status).toBe('PENDING_REFERENCE');
     const snapshot = await request(http)
-      .get(`/wagering/transactions/${pending.transactionId}`).expect(200);
+      .get(`/wagering/transactions/${pending.transactionId}`)
+      .expect(200);
     expect((snapshot.body as { status: string }).status).toBe('PENDING_REFERENCE');
   });
 
@@ -173,9 +194,12 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
     expect(ids.size).toBe(4);
     await request(http).get(`/wallets/${wallet.id}/ledger?limit=101`).expect(400);
     const another = await createWallet();
-    const page = (await request(http).get(`/wallets/${wallet.id}/ledger?limit=1`).expect(200)).body as LedgerPage;
+    const page = (await request(http).get(`/wallets/${wallet.id}/ledger?limit=1`).expect(200))
+      .body as LedgerPage;
     if (!page.nextCursor) throw new Error('Missing ledger cursor');
-    await request(http).get(`/wallets/${another.id}/ledger?cursor=${encodeURIComponent(page.nextCursor)}`).expect(400);
+    await request(http)
+      .get(`/wallets/${another.id}/ledger?cursor=${encodeURIComponent(page.nextCursor)}`)
+      .expect(400);
   });
 
   it('returns reconciliation without changing the wallet or its ledger and exposes the metric', async () => {
@@ -183,9 +207,12 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
     await submit(wager(wallet), uid(), 200);
     const first = await request(http).post(`/wallets/${wallet.id}/reconciliation`).expect(200);
     const reconciliation = first.body as {
-      walletId: string; storedBalance: { amount: string };
-      calculatedBalance: { amount: string }; difference: { amount: string };
-      consistent: boolean; checkedEntries: number;
+      walletId: string;
+      storedBalance: { amount: string };
+      calculatedBalance: { amount: string };
+      difference: { amount: string };
+      consistent: boolean;
+      checkedEntries: number;
     };
     expect(reconciliation.walletId).toBe(wallet.id);
     expect(reconciliation.consistent).toBe(true);
@@ -202,30 +229,37 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
   it('serializes competing BETs at the HTTP boundary without duplicate ledger debits', async () => {
     const wallet = await createWallet('100.00');
     const bets = [wager(wallet, 'BET', '80.00'), wager(wallet, 'BET', '80.00')];
-    const replies = await Promise.all(bets.map(body =>
-      request(http).post('/wagering/transactions')
-        .set('Idempotency-Key', uid()).send(body),
-    ));
-    expect(replies.map(reply => reply.status).sort()).toEqual([200, 422]);
+    const replies = await Promise.all(
+      bets.map((body) =>
+        request(http).post('/wagering/transactions').set('Idempotency-Key', uid()).send(body),
+      ),
+    );
+    expect(replies.map((reply) => reply.status).sort()).toEqual([200, 422]);
     const final = (await request(http).get(`/wallets/${wallet.id}`).expect(200)).body as WalletView;
     expect(final.balance.amount).toBe('20.00');
     expect(final.version).toBe(2);
-    const page = (await request(http).get(`/wallets/${wallet.id}/ledger`).expect(200)).body as LedgerPage;
-    expect(page.items.filter(item => item.direction === 'DEBIT')).toHaveLength(1);
+    const page = (await request(http).get(`/wallets/${wallet.id}/ledger`).expect(200))
+      .body as LedgerPage;
+    expect(page.items.filter((item) => item.direction === 'DEBIT')).toHaveLength(1);
   });
 
   it('keeps liveness public and reports PostgreSQL + SQS reachability separately', async () => {
     await request(http).get('/health/live').expect(200).expect({ status: 'live' });
     const original = process.env.SQS_ENDPOINT_URL;
-    const mock = createServer((_req, res) => { res.statusCode = 200; res.end('ok'); });
-    await new Promise<void>(resolve => mock.listen(0, '127.0.0.1', resolve));
+    const mock = createServer((_req, res) => {
+      res.statusCode = 200;
+      res.end('ok');
+    });
+    await new Promise<void>((resolve) => mock.listen(0, '127.0.0.1', resolve));
     const address = mock.address() as AddressInfo;
     process.env.SQS_ENDPOINT_URL = `http://127.0.0.1:${address.port}`;
     try {
       const response = await request(http).get('/health/ready').expect(200);
       expect(response.body).toEqual({ status: 'ready', postgres: 'up', sqs: 'up' });
     } finally {
-      await new Promise<void>((resolve, reject) => mock.close(error => error ? reject(error) : resolve()));
+      await new Promise<void>((resolve, reject) =>
+        mock.close((error) => (error ? reject(error) : resolve())),
+      );
       if (original === undefined) delete process.env.SQS_ENDPOINT_URL;
       else process.env.SQS_ENDPOINT_URL = original;
     }

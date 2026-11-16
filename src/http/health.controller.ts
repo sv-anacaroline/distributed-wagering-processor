@@ -12,7 +12,9 @@ export class HealthService {
     try {
       await this.em.fork().execute('select 1');
       postgres = true;
-    } catch { /* unavailable */ }
+    } catch {
+      /* unavailable */
+    }
     try {
       const region = process.env.AWS_REGION ?? 'us-east-1';
       const endpoint = process.env.SQS_ENDPOINT_URL ?? `https://sqs.${region}.amazonaws.com`;
@@ -24,10 +26,14 @@ export class HealthService {
       // Unsigned public check: AWS may return 400/403 for credentials;
       // only 2xx or known request-validation responses count as reachable.
       sqs = response.ok || response.status === 400 || response.status === 403;
-    } catch { /* unavailable */ }
+    } catch {
+      /* unavailable */
+    }
     if (!postgres || !sqs) {
       throw new ServiceUnavailableException({
-        status: 'unavailable', postgres: postgres ? 'up' : 'down', sqs: sqs ? 'up' : 'down',
+        status: 'unavailable',
+        postgres: postgres ? 'up' : 'down',
+        sqs: sqs ? 'up' : 'down',
       });
     }
     return { status: 'ready', postgres: 'up', sqs: 'up' };

@@ -8,12 +8,23 @@ function service(records: unknown[]): WagerService {
   return new WagerService(fake as never);
 }
 const row = () => ({
-  id: 'id', provider_id: 'provider', external_transaction_id: 'ext',
-  wallet_id: 'wallet', player_id: 'player', round_id: 'round', game_id: 'game',
-  kind: 'LOSS', status: 'PROCESSED', amount: '50.00', currency: 'BRL',
-  reference_external_transaction_id: null, reference_transaction_id: null,
-  failure_code: null, created_at: new Date('2026-11-16T00:00:00Z'),
-  processed_at: new Date('2026-11-16T00:00:01Z'), response_snapshot: null,
+  id: 'id',
+  provider_id: 'provider',
+  external_transaction_id: 'ext',
+  wallet_id: 'wallet',
+  player_id: 'player',
+  round_id: 'round',
+  game_id: 'game',
+  kind: 'LOSS',
+  status: 'PROCESSED',
+  amount: '50.00',
+  currency: 'BRL',
+  reference_external_transaction_id: null,
+  reference_transaction_id: null,
+  failure_code: null,
+  created_at: new Date('2026-11-16T00:00:00Z'),
+  processed_at: new Date('2026-11-16T00:00:01Z'),
+  response_snapshot: null,
 });
 describe('WagerService queries', () => {
   it('returns a typed immutable financial string contract for internal ID lookups', async () => {
@@ -29,10 +40,18 @@ describe('WagerService queries', () => {
   });
   it('distinguishes not-found transactions', async () => {
     let failed: unknown;
-    try { await service([]).findById('missing'); } catch (e: unknown) { failed = e; }
+    try {
+      await service([]).findById('missing');
+    } catch (e: unknown) {
+      failed = e;
+    }
     expect(failed).toBeInstanceOf(NotFoundException);
     failed = undefined;
-    try { await service([]).findByExternalId('provider', 'missing'); } catch (e: unknown) { failed = e; }
+    try {
+      await service([]).findByExternalId('provider', 'missing');
+    } catch (e: unknown) {
+      failed = e;
+    }
     expect(failed).toBeInstanceOf(NotFoundException);
   });
 });

@@ -1,6 +1,14 @@
 import {
-  Body, Controller, Get, Headers, HttpCode, Param, Post,
-  Req, Res, UseGuards,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Param,
+  Post,
+  Req,
+  Res,
+  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { WagerTransactionStatus as Status } from '../domain/wager-transaction.js';
@@ -28,16 +36,17 @@ export class WagerController {
     assertProviderIdentity(command.providerId, req.authProviderId);
     const result = await this.wagers.submit(command);
     res.status(
-      result.status === Status.PendingReference ? 202 : result.status === Status.Rejected ? 422 : 200,
+      result.status === Status.PendingReference
+        ? 202
+        : result.status === Status.Rejected
+          ? 422
+          : 200,
     );
     return result;
   }
 
   @Get(':transactionId')
-  async find(
-    @Param('transactionId') id: string,
-    @Req() req: ProviderRequest,
-  ) {
+  async find(@Param('transactionId') id: string, @Req() req: ProviderRequest) {
     const result = await this.wagers.findById(uuidField(id, 'transactionId'));
     assertProviderIdentity(result.providerId, req.authProviderId);
     return result;

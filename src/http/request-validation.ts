@@ -6,8 +6,11 @@ import type { WagerCommand } from '../application/wager-contracts.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BUSINESS_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const BET_KINDS: readonly string[] = [
-  WagerTransactionKind.Bet, WagerTransactionKind.Win, WagerTransactionKind.Loss,
-  WagerTransactionKind.Refund, WagerTransactionKind.Rollback,
+  WagerTransactionKind.Bet,
+  WagerTransactionKind.Win,
+  WagerTransactionKind.Loss,
+  WagerTransactionKind.Refund,
+  WagerTransactionKind.Rollback,
 ];
 
 export function objectField(input: unknown, name = 'body'): Record<string, unknown> {
@@ -32,7 +35,8 @@ export function moneyField(value: unknown, positive = false): MoneyProps {
   const props = objectField(value, 'money');
   try {
     const result = Money.from({
-      amount: props.amount as string, currency: props.currency as string,
+      amount: props.amount as string,
+      currency: props.currency as string,
     });
     if (positive && !result.isPositive()) {
       throw new BadRequestException('Wager money must be greater than zero');
@@ -59,13 +63,24 @@ export function wagerPayload(input: unknown, header: unknown): WagerCommand {
     throw new BadRequestException('kind must be BET, WIN, LOSS, REFUND or ROLLBACK');
   }
   const kind = body.kind as Exclude<WagerTransactionKind, WagerTransactionKind.Opening>;
-  const reference = body.referenceExternalTransactionId === undefined
-    ? undefined
-    : textField(body.referenceExternalTransactionId, 'referenceExternalTransactionId');
-  if ((kind === WagerTransactionKind.Refund || kind === WagerTransactionKind.Rollback) && !reference) {
+  const reference =
+    body.referenceExternalTransactionId === undefined
+      ? undefined
+      : textField(body.referenceExternalTransactionId, 'referenceExternalTransactionId');
+  if (
+    (kind === WagerTransactionKind.Refund || kind === WagerTransactionKind.Rollback) &&
+    !reference
+  ) {
     throw new BadRequestException('REFUND/ROLLBACK require referenceExternalTransactionId');
   }
-  if (reference && ![WagerTransactionKind.Win, WagerTransactionKind.Refund, WagerTransactionKind.Rollback].includes(kind)) {
+  if (
+    reference &&
+    ![
+      WagerTransactionKind.Win,
+      WagerTransactionKind.Refund,
+      WagerTransactionKind.Rollback,
+    ].includes(kind)
+  ) {
     throw new BadRequestException('Reference is not allowed for this operation');
   }
   return {

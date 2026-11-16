@@ -3,7 +3,11 @@ import { EntityManager as CoreEntityManager } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
 import { ProcessWager } from '../application/process-wager.js';
 import type { WagerCommand, WagerResult } from '../application/wager-contracts.js';
-import type { WagerTransactionKind, WagerTransactionStatus, FailureCode } from '../domain/wager-transaction.js';
+import type {
+  WagerTransactionKind,
+  WagerTransactionStatus,
+  FailureCode,
+} from '../domain/wager-transaction.js';
 import type { MoneyProps } from '../domain/money.js';
 
 interface TransactionRow {
@@ -45,15 +49,25 @@ export interface TransactionView {
 }
 function transactionView(row: TransactionRow): TransactionView {
   return {
-    id: row.id, providerId: row.provider_id, externalTransactionId: row.external_transaction_id,
-    walletId: row.wallet_id, playerId: row.player_id, roundId: row.round_id,
-    gameId: row.game_id, kind: row.kind, status: row.status,
+    id: row.id,
+    providerId: row.provider_id,
+    externalTransactionId: row.external_transaction_id,
+    walletId: row.wallet_id,
+    playerId: row.player_id,
+    roundId: row.round_id,
+    gameId: row.game_id,
+    kind: row.kind,
+    status: row.status,
     money: { amount: row.amount, currency: row.currency },
     createdAt: new Date(row.created_at).toISOString(),
     ...(row.processed_at ? { processedAt: new Date(row.processed_at).toISOString() } : {}),
     ...(row.failure_code ? { failureCode: row.failure_code } : {}),
-    ...(row.reference_external_transaction_id ? { referenceExternalTransactionId: row.reference_external_transaction_id } : {}),
-    ...(row.reference_transaction_id ? { referenceTransactionId: row.reference_transaction_id } : {}),
+    ...(row.reference_external_transaction_id
+      ? { referenceExternalTransactionId: row.reference_external_transaction_id }
+      : {}),
+    ...(row.reference_transaction_id
+      ? { referenceTransactionId: row.reference_transaction_id }
+      : {}),
     ...(row.response_snapshot ? { result: row.response_snapshot } : {}),
   };
 }
@@ -79,7 +93,10 @@ export class WagerService {
     return transactionView(row);
   }
 
-  async findByExternalId(providerId: string, externalTransactionId: string): Promise<TransactionView> {
+  async findByExternalId(
+    providerId: string,
+    externalTransactionId: string,
+  ): Promise<TransactionView> {
     const [row] = await this.em.fork().execute<TransactionRow[]>(
       `select id,provider_id,external_transaction_id,wallet_id,player_id,round_id,game_id,
         kind,status,amount::text as amount,currency,reference_external_transaction_id,

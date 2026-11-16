@@ -12,30 +12,53 @@ function service(execute: (sql: string, values: unknown[]) => Promise<unknown>):
 }
 describe('WalletService queries', () => {
   it('rehydrates exact money strings from a wallet query', async () => {
-    const wallet = service(() => Promise.resolve([{
-      id: 'wallet', player_id: 'player', currency: 'BRL',
-      balance: '100.10', version: 7, created_at: new Date(),
-    }]));
+    const wallet = service(() =>
+      Promise.resolve([
+        {
+          id: 'wallet',
+          player_id: 'player',
+          currency: 'BRL',
+          balance: '100.10',
+          version: 7,
+          created_at: new Date(),
+        },
+      ]),
+    );
     expect(await wallet.find('wallet')).toEqual({
-      id: 'wallet', playerId: 'player', balance: { amount: '100.10', currency: 'BRL' }, version: 7,
+      id: 'wallet',
+      playerId: 'player',
+      balance: { amount: '100.10', currency: 'BRL' },
+      version: 7,
     });
   });
   it('returns 404 for a missing wallet', async () => {
     const wallet = service(() => Promise.resolve([]));
-    try { await wallet.find('wallet'); throw new Error('Expected not found'); }
-    catch (error: unknown) { expect(error).toBeInstanceOf(NotFoundException); }
+    try {
+      await wallet.find('wallet');
+      throw new Error('Expected not found');
+    } catch (error: unknown) {
+      expect(error).toBeInstanceOf(NotFoundException);
+    }
   });
   it('does not create or read ledger rows when wallet does not exist', async () => {
     const calls: string[] = [];
-    const wallet = service(sql => { calls.push(sql); return Promise.resolve([]); });
-    try { await wallet.ledger('missing', 50); }
-    catch (error: unknown) { expect(error).toBeInstanceOf(NotFoundException); }
+    const wallet = service((sql) => {
+      calls.push(sql);
+      return Promise.resolve([]);
+    });
+    try {
+      await wallet.ledger('missing', 50);
+    } catch (error: unknown) {
+      expect(error).toBeInstanceOf(NotFoundException);
+    }
     expect(calls).toHaveLength(1);
   });
 });
 
 describe('wallet opening SQL transaction and ledger adapter', () => {
-  function transactionalService(write: (sql: string, values: unknown[]) => Promise<unknown>): WalletService {
+  function transactionalService(
+    write: (sql: string, values: unknown[]) => Promise<unknown>,
+  ): WalletService {
     const manager = {
       execute: write,
       transactional: (task: (em: unknown) => Promise<unknown>) => task(manager),
@@ -61,7 +84,10 @@ describe('wallet opening SQL transaction and ledger adapter', () => {
   });
   it('does not create an OPENING transaction for an empty wallet', async () => {
     const statements: string[] = [];
-    const svc = transactionalService(sql => { statements.push(sql); return Promise.resolve([]); });
+    const svc = transactionalService((sql) => {
+      statements.push(sql);
+      return Promise.resolve([]);
+    });
     const created = await svc.create(randomUUID(), { amount: '0.00', currency: 'BRL' });
     expect(created.balance.amount).toBe('0.00');
     expect(statements).toHaveLength(1);
@@ -70,24 +96,38 @@ describe('wallet opening SQL transaction and ledger adapter', () => {
     const duplicate = Object.assign(new Error('duplicate'), { code: '23505' });
     const svc = transactionalService(() => Promise.reject(duplicate));
     let error: unknown;
-    try { await svc.create(randomUUID(), { amount: '10.00', currency: 'BRL' }); }
-    catch (caught: unknown) { error = caught; }
+    try {
+      await svc.create(randomUUID(), { amount: '10.00', currency: 'BRL' });
+    } catch (caught: unknown) {
+      error = caught;
+    }
     expect(error).toBeInstanceOf(ConflictException);
   });
   it('paginates using a stable keyset, not offset, preserving exact decimal strings', async () => {
     const walletId = randomUUID();
     const row = {
-      id: randomUUID(), transaction_id: randomUUID(), direction: 'DEBIT',
-      amount: '0.01', currency: 'BRL', balance_before: '10.00',
-      balance_after: '9.99', created_at: new Date('2026-11-16T00:00:00Z'),
+      id: randomUUID(),
+      transaction_id: randomUUID(),
+      direction: 'DEBIT',
+      amount: '0.01',
+      currency: 'BRL',
+      balance_before: '10.00',
+      balance_after: '9.99',
+      created_at: new Date('2026-11-16T00:00:00Z'),
     };
     const queryLog: string[] = [];
-    const svc = service(sql => {
+    const svc = service((sql) => {
       queryLog.push(sql);
       if (sql.includes('from wallets')) {
-        return Promise.resolve([{
-          id: walletId, player_id: randomUUID(), currency: 'BRL', balance: '9.99', version: 2,
-        }]);
+        return Promise.resolve([
+          {
+            id: walletId,
+            player_id: randomUUID(),
+            currency: 'BRL',
+            balance: '9.99',
+            version: 2,
+          },
+        ]);
       }
       return Promise.resolve([row, { ...row, id: randomUUID() }]);
     });

@@ -8,7 +8,8 @@ describe('reconciliation exact arithmetic', () => {
       storedBalance: { amount: '975.00', currency: 'BRL' },
       calculatedBalance: { amount: '975.00', currency: 'BRL' },
       difference: { amount: '0.00', currency: 'BRL' },
-      consistent: true, checkedEntries: 42,
+      consistent: true,
+      checkedEntries: 42,
     });
   });
   it('signals positive and negative discrepancies without floating point', () => {
@@ -20,7 +21,10 @@ describe('reconciliation exact arithmetic', () => {
     expect(b.difference.amount).toBe('-0.01');
   });
   it('does not lose precision for large balances', () => {
-    expect(reconcileAmounts('w1', 'BRL', '999999999999999999.99', '999999999999999999.98', 1).difference.amount).toBe('0.01');
+    expect(
+      reconcileAmounts('w1', 'BRL', '999999999999999999.99', '999999999999999999.98', 1).difference
+        .amount,
+    ).toBe('0.01');
   });
 });
 
@@ -48,15 +52,21 @@ describe('reconciliation SQL snapshot and anomaly audit', () => {
     const result = await svc.run('wallet');
     expect(result.consistent).toBe(true);
     expect(result.checkedEntries).toBe(42);
-    expect(sqls.filter(sql => sql.includes('insert into wallet_reconciliation_anomalies'))).toHaveLength(0);
+    expect(
+      sqls.filter((sql) => sql.includes('insert into wallet_reconciliation_anomalies')),
+    ).toHaveLength(0);
   });
   it('records an immutable anomaly but never mutates wallet balance or ledger', async () => {
     const { svc, sqls } = service('100.00', '99.99');
     const result = await svc.run('wallet');
     expect(result.consistent).toBe(false);
     expect(result.difference.amount).toBe('0.01');
-    expect(sqls.filter(sql => sql.includes('insert into wallet_reconciliation_anomalies'))).toHaveLength(1);
-    expect(sqls.some(sql => /update wallets|delete from wallet_ledger_entries/i.test(sql))).toBe(false);
+    expect(
+      sqls.filter((sql) => sql.includes('insert into wallet_reconciliation_anomalies')),
+    ).toHaveLength(1);
+    expect(sqls.some((sql) => /update wallets|delete from wallet_ledger_entries/i.test(sql))).toBe(
+      false,
+    );
   });
   it('returns a durable cross-instance anomaly metric as a decimal count string', async () => {
     const { svc } = service('100.00', '100.00');

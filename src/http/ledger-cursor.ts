@@ -31,8 +31,11 @@ export function decodeLedgerCursor(cursor: string, walletId: string): LedgerCurs
     throw new BadRequestException('Invalid ledger cursor signature');
   }
   let value: unknown;
-  try { value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown; }
-  catch { throw new BadRequestException('Invalid ledger cursor data'); }
+  try {
+    value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as unknown;
+  } catch {
+    throw new BadRequestException('Invalid ledger cursor data');
+  }
   if (!value || typeof value !== 'object') throw new BadRequestException('Invalid ledger cursor');
   const fields = value as Record<string, unknown>;
   if (

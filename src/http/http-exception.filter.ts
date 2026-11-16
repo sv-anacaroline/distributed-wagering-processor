@@ -17,8 +17,12 @@ export function httpError(error: unknown): { status: number; code: string; messa
     if (error.code === 'IDEMPOTENCY_CONFLICT') {
       return { status: 409, code: error.code, message: error.message };
     }
-    if (error.code === 'INVALID_MONEY' || error.code === 'INVALID_REFERENCE' ||
-        error.code === 'INVALID_DOMAIN_STATE' || error.code === 'CURRENCY_MISMATCH') {
+    if (
+      error.code === 'INVALID_MONEY' ||
+      error.code === 'INVALID_REFERENCE' ||
+      error.code === 'INVALID_DOMAIN_STATE' ||
+      error.code === 'CURRENCY_MISMATCH'
+    ) {
       return { status: 400, code: error.code, message: error.message };
     }
     return { status: 422, code: error.code, message: error.message };
@@ -26,15 +30,38 @@ export function httpError(error: unknown): { status: number; code: string; messa
   if (error instanceof HttpException) {
     const status = error.getStatus();
     const codes: Record<number, string> = {
-      400: 'INVALID_PAYLOAD', 401: 'UNAUTHORIZED', 403: 'FORBIDDEN',
-      404: 'NOT_FOUND', 409: 'CONFLICT', 422: 'BUSINESS_REJECTION',
+      400: 'INVALID_PAYLOAD',
+      401: 'UNAUTHORIZED',
+      403: 'FORBIDDEN',
+      404: 'NOT_FOUND',
+      409: 'CONFLICT',
+      422: 'BUSINESS_REJECTION',
       503: 'INFRASTRUCTURE_UNAVAILABLE',
     };
     return { status, code: codes[status] ?? 'HTTP_ERROR', message: error.message };
   }
   const code = databaseCode(error);
-  if (code && (code.startsWith('08') || ['40001', '40P01', '55P03', '53300', '57P01', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN'].includes(code))) {
-    return { status: HttpStatus.SERVICE_UNAVAILABLE, code: 'INFRASTRUCTURE_UNAVAILABLE', message: 'Temporary database error' };
+  if (
+    code &&
+    (code.startsWith('08') ||
+      [
+        '40001',
+        '40P01',
+        '55P03',
+        '53300',
+        '57P01',
+        'ECONNREFUSED',
+        'ETIMEDOUT',
+        'ECONNRESET',
+        'ENOTFOUND',
+        'EAI_AGAIN',
+      ].includes(code))
+  ) {
+    return {
+      status: HttpStatus.SERVICE_UNAVAILABLE,
+      code: 'INFRASTRUCTURE_UNAVAILABLE',
+      message: 'Temporary database error',
+    };
   }
   return { status: 500, code: 'INTERNAL_ERROR', message: 'Internal server error' };
 }
@@ -45,11 +72,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const response = host.switchToHttp().getResponse<Response>();
     const error = httpError(exception);
     const original = exception instanceof HttpException ? exception.getResponse() : null;
-    const details = original && typeof original === 'object' && !Array.isArray(original)
-      ? original as Record<string, unknown>
-      : null;
+    const details =
+      original && typeof original === 'object' && !Array.isArray(original)
+        ? (original as Record<string, unknown>)
+        : null;
     response.status(error.status).json({
-      statusCode: error.status, code: error.code, message: error.message,
+      statusCode: error.status,
+      code: error.code,
+      message: error.message,
       ...(details?.postgres !== undefined && details.sqs !== undefined
         ? { postgres: details.postgres, sqs: details.sqs }
         : {}),

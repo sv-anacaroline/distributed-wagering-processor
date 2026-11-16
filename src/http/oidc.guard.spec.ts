@@ -3,16 +3,28 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { ExecutionContext } from '@nestjs/common';
 import { createSign, generateKeyPairSync } from 'node:crypto';
-import { ForbiddenException, UnauthorizedException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  UnauthorizedException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { assertProviderIdentity, OidcAuthGuard, verifyOidcJwt } from './oidc.guard.js';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 function token(override: Record<string, unknown> = {}): string {
-  const header = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'key1', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({
-    iss: 'https://idp.example/realms/wagering', aud: 'wagering-api', sub: 'user1',
-    exp: 4_000_000_000, provider_id: 'provider-a', ...override,
-  })).toString('base64url');
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'key1', typ: 'JWT' })).toString(
+    'base64url',
+  );
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: 'https://idp.example/realms/wagering',
+      aud: 'wagering-api',
+      sub: 'user1',
+      exp: 4_000_000_000,
+      provider_id: 'provider-a',
+      ...override,
+    }),
+  ).toString('base64url');
   const signer = createSign('RSA-SHA256');
   signer.update(`${header}.${payload}`);
   const signature = signer.sign(privateKey).toString('base64url');
@@ -20,7 +32,13 @@ function token(override: Record<string, unknown> = {}): string {
 }
 describe('OIDC JWT verification', () => {
   const verify = (value: string) =>
-    verifyOidcJwt(value, publicKey, 'https://idp.example/realms/wagering', 'wagering-api', 1_800_000_000);
+    verifyOidcJwt(
+      value,
+      publicKey,
+      'https://idp.example/realms/wagering',
+      'wagering-api',
+      1_800_000_000,
+    );
   it('accepts RS256 signatures and verified provider claims', () => {
     expect(verify(token()).provider_id).toBe('provider-a');
   });
@@ -30,8 +48,10 @@ describe('OIDC JWT verification', () => {
   });
   it('rejects expired, early, wrong issuer and wrong audience JWTs', () => {
     for (const claims of [
-      { exp: 1_000_000_000 }, { nbf: 2_500_000_000 },
-      { iss: 'https://attacker.example' }, { aud: 'other-api' },
+      { exp: 1_000_000_000 },
+      { nbf: 2_500_000_000 },
+      { iss: 'https://attacker.example' },
+      { aud: 'other-api' },
     ]) {
       expect(() => verify(token(claims))).toThrow(UnauthorizedException);
     }
@@ -62,7 +82,7 @@ describe('OIDC guard integrated with an external JWKS endpoint', () => {
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ keys: [{ ...jwk, kid: 'key1', alg: 'RS256', use: 'sig' }] }));
     });
-    await new Promise<void>(resolve => mockIdp.listen(0, '127.0.0.1', resolve));
+    await new Promise<void>((resolve) => mockIdp.listen(0, '127.0.0.1', resolve));
     const address = mockIdp.address() as AddressInfo;
     endpoint = `http://127.0.0.1:${address.port}`;
     process.env.HTTP_AUTH_MODE = 'oidc';
@@ -71,20 +91,27 @@ describe('OIDC guard integrated with an external JWKS endpoint', () => {
     process.env.OIDC_JWKS_URL = endpoint;
   });
   afterAll(async () => {
-    await new Promise<void>((resolve, reject) => mockIdp.close(error => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) =>
+      mockIdp.close((error) => (error ? reject(error) : resolve())),
+    );
     for (const [key, value] of Object.entries(preserved)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
   });
-  const context = (authorization?: string): {
+  const context = (
+    authorization?: string,
+  ): {
     readonly ctx: ExecutionContext;
     readonly request: { headers: { authorization?: string }; authProviderId?: string };
   } => {
     const request: { headers: { authorization?: string }; authProviderId?: string } = {
       headers: { ...(authorization ? { authorization } : {}) },
     };
-    return { request, ctx: { switchToHttp: () => ({ getRequest: () => request }) } as unknown as ExecutionContext };
+    return {
+      request,
+      ctx: { switchToHttp: () => ({ getRequest: () => request }) } as unknown as ExecutionContext,
+    };
   };
   it('validates a signed bearer token from the JWKS and binds provider identity', async () => {
     const request = context('Bearer ' + token());
@@ -97,11 +124,18 @@ describe('OIDC guard integrated with an external JWKS endpoint', () => {
   it('rejects missing credentials and expired tokens without exposing protected endpoints', async () => {
     const guard = new OidcAuthGuard();
     let caught: unknown;
-    try { await guard.canActivate(context().ctx); } catch (e: unknown) { caught = e; }
+    try {
+      await guard.canActivate(context().ctx);
+    } catch (e: unknown) {
+      caught = e;
+    }
     expect(caught).toBeInstanceOf(UnauthorizedException);
     caught = undefined;
-    try { await guard.canActivate(context('Bearer ' + token({ exp: 1 })).ctx); }
-    catch (e: unknown) { caught = e; }
+    try {
+      await guard.canActivate(context('Bearer ' + token({ exp: 1 })).ctx);
+    } catch (e: unknown) {
+      caught = e;
+    }
     expect(caught).toBeInstanceOf(UnauthorizedException);
   });
   it('refuses to run as OIDC when the identity provider is not configured', async () => {
@@ -109,8 +143,11 @@ describe('OIDC guard integrated with an external JWKS endpoint', () => {
     delete process.env.OIDC_AUDIENCE;
     try {
       let error: unknown;
-      try { await new OidcAuthGuard().canActivate(context('Bearer ' + token()).ctx); }
-      catch (e: unknown) { error = e; }
+      try {
+        await new OidcAuthGuard().canActivate(context('Bearer ' + token()).ctx);
+      } catch (e: unknown) {
+        error = e;
+      }
       expect(error).toBeInstanceOf(ServiceUnavailableException);
     } finally {
       process.env.OIDC_AUDIENCE = original;
@@ -118,11 +155,15 @@ describe('OIDC guard integrated with an external JWKS endpoint', () => {
   });
   it('rejects an unknown key id from a JWKS response', async () => {
     const [header, payload] = token().split('.');
-    const changed = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'unknown' })).toString('base64url');
+    const changed = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'unknown' })).toString(
+      'base64url',
+    );
     let error: unknown;
     try {
       await new OidcAuthGuard().canActivate(context(`Bearer ${changed}.${payload}.signature`).ctx);
-    } catch (e: unknown) { error = e; }
+    } catch (e: unknown) {
+      error = e;
+    }
     expect(error).toBeInstanceOf(UnauthorizedException);
     expect(header).toBeDefined();
   });
