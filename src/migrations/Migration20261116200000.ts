@@ -6,7 +6,7 @@ import { Migration } from '@mikro-orm/migrations';
  * The app must still lock the wallet row FOR UPDATE within the SQL transaction.
  */
 export class Migration20261116200000 extends Migration {
-  override async up(): Promise<void> {
+  override up(): void {
     this.addSql(`
       create table wallets (
         id uuid primary key,
@@ -303,7 +303,7 @@ export class Migration20261116200000 extends Migration {
     `);
   }
 
-  override async down(): Promise<void> {
+  override down(): void {
     this.addSql('drop table if exists outbox_messages');
     this.addSql('drop table if exists inbox_messages');
     this.addSql('drop table if exists wallet_ledger_entries');
