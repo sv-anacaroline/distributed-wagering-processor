@@ -2,7 +2,7 @@
 
 Desafio técnico da Jungle Gaming: processamento financeiro distribuído de apostas, com foco em precisão monetária, idempotência, concorrência e recuperação após falhas.
 
-> **Estado atual:** starter NestJS, infraestrutura declarativa e MikroORM/PostgreSQL configurados. As migrations estão preparadas, mas nenhuma tabela de domínio foi criada. Wallet, ledger, consumidores, workers e testes financeiros ainda serão implementados. Não confunda o endpoint `GET /` com um health check de produção.
+> **Estado atual:** modelo de domínio financeiro com testes unitários, migration inicial de tabelas/constraints e testes SQL em PostgreSQL. **Ainda faltam entidades de mapeamento MikroORM, casos de uso transacionais, HTTP, consumidores e publishers SQS.** O endpoint `GET /` ainda não é um health check de produção. Não confunda o endpoint `GET /` com um health check de produção.
 
 ## Stack
 
@@ -59,7 +59,7 @@ bun run test:cov
 
 ## Persistência e migrations (MikroORM)
 
-O MikroORM utiliza o PostgreSQL configurado em `src/mikro-orm.config.ts`, com integração pelo `MikroOrmModule` no NestJS. As entidades de persistência e respectivas constraints serão criadas em tarefas de domínio; **não há migrations de tabelas financeiras nesta etapa**.
+O MikroORM utiliza o PostgreSQL configurado em `src/mikro-orm.config.ts`. A migration `src/migrations/Migration20261116200000.ts` cria as tabelas financeiras, índices, constraints e triggers. Os mapeamentos MikroORM e os casos de uso serão implementados separadamente. Consulte [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Para trabalhar localmente, copie `.env.example` para `.env` e inicie o PostgreSQL:
 
@@ -68,6 +68,7 @@ cp .env.example .env
 docker compose up -d postgres
 bun install
 bun run db:debug
+bun run db:migrate:up
 bun run start:dev
 ```
 
@@ -90,6 +91,17 @@ bun run db:migrate:rollback
 ```
 
 As migrations são transacionais, versionadas e com rollback revisável. **Não** executamos migrations automaticamente no bootstrap dos pods. Consulte [docs/PERSISTENCE.md](docs/PERSISTENCE.md).
+
+## Domínio financeiro
+
+O domínio puro está em `src/domain/`: `Money` (bigint centavos, sem floats),
+`Wallet`, `WalletLedgerEntry`, `WagerTransaction`, `InboxMessage`,
+`OutboxMessage` e quatro eventos versionados, cada qual com testes unitários.
+Consulte [ARCHITECTURE.md](ARCHITECTURE.md) para invariantes, status,
+restrições de reversão, schema SQL e limites desta etapa.
+
+O teste de schema usa PostgreSQL real no CI (`bun run test:e2e`) e valida
+unicidade, trigger de ledger append-only, saldos e versão de carteira.
 
 ## Integração contínua (GitHub Actions)
 
@@ -132,7 +144,7 @@ Para simular três processos independentes da aplicação:
 docker compose --profile distributed up --build -d --scale api-replica=2
 ```
 
-Isso **não prova** a correção concorrente: wallet, ledger, idempotência e consumers ainda serão implementados.
+Isso **não prova** a correção concorrente: o domínio e o schema estão prontos, mas os casos de uso com locks SQL, consumidores e workers ainda serão implementados.
 
 ## Qualidade de código e testes
 
@@ -150,7 +162,7 @@ bun run test:e2e
 bun run test:cov
 ```
 
-Os PRs para a `master` executam **três checks independentes**: lint/formatação/TypeScript, testes/coverage/PostgreSQL e validação dos cenários k6. O deploy continua simulado. Configure ambos como *required checks* em Settings → Rules → Rulesets para bloquear merges com CI falhando.
+Os PRs para a `master` executam **três checks independentes**: lint/formatação/TypeScript, testes/coverage/PostgreSQL e validação dos cenários k6. O deploy continua simulado. Configure os três checks como *required checks* em Settings → Rules → Rulesets para bloquear merges com CI falhando.
 
 **Testes usam Bun Test**, compatível com a API de asserções Jest. Não adicionamos um segundo test runner porque Bun 1.x é obrigatório no desafio.
 
@@ -179,7 +191,7 @@ A configuração para AWS está em `infra/terraform/aws`; o Deployment Kubernete
 
 ## Limitações atuais
 
-- MikroORM instalado e scripts de migrations configurados, mas ainda sem entidades, migrations de domínio, validação financeira, inbox/outbox ou consumo efetivo de SQS.
+- Modelo de domínio e migration SQL inicial implementados, com testes unitários e de constraints. **Não há casos de uso financeiros, mapeamentos ORM, inbox/outbox persistidos em execução nem consumo efetivo de SQS**.
 - Kubernetes usa `GET /` temporariamente nas probes; substituir por `/health/live` e `/health/ready`.
 - Terraform AWS é um exemplo de desenvolvimento com state local; não é um ambiente de produção pronto.
 - Provisionamento real e integração ponta a ponta ainda dependem de validação com Docker, Bun, Terraform e uma conta AWS.
