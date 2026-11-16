@@ -37,16 +37,6 @@ jobs:
       - name: Verify formatting
         if: success() || failure()
         run: bun run format:check
-      - name: Export clean business-rule sources for review (temporary)
-        if: always()
-        run: |
-          bun run lint:fix || true
-          bunx --bun prettier --write "src/application/**/*.ts" "src/workers/**/*.ts" "src/jobs/retry-references.ts" "src/migrations/Migration20261116213000.ts" "test/business-rules-schema.integration.test.ts" "test/process-wager.integration.test.ts"
-          for file in src/application/*.ts src/workers/*.ts src/jobs/retry-references.ts src/migrations/Migration20261116213000.ts test/business-rules-schema.integration.test.ts test/process-wager.integration.test.ts; do
-            echo "__BEGINFILE__${file}"
-            base64 -w 120 "$file" | sed 's/^/__FILECHUNK__/'
-            echo "__ENDFILE__${file}"
-          done
 
   quality:
     name: Unit, E2E, coverage and PostgreSQL
