@@ -27,6 +27,13 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
+      - name: Resolve official SQS SDK lockfile (temporary)
+        run: bun install
+      - name: Export SQS Bun lockfile (temporary)
+        run: |
+          echo "__LOCKBEGIN__"
+          base64 -w 120 bun.lock | sed 's/^/__LOCKCHUNK__/'
+          echo "__LOCKEND__"
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: ESLint with type-aware rules
