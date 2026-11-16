@@ -2,7 +2,7 @@ import { beforeAll, afterAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import {
   CreateQueueCommand, DeleteMessageCommand, DeleteQueueCommand,
-  ReceiveMessageCommand, SendMessageCommand, SQSClient, type Message,
+  ReceiveMessageCommand, SendMessageCommand, SQSClient,
 } from '@aws-sdk/client-sqs';
 import { MikroORM } from '@mikro-orm/postgresql';
 import config from '../src/mikro-orm.config.js';
@@ -11,7 +11,7 @@ import { ProcessWager } from '../src/application/process-wager.js';
 import { OutboxPublisher } from '../src/events/outbox-publisher.js';
 import { SqsWagerConsumer } from '../src/events/sqs-wager-consumer.js';
 import type { WagerCommand } from '../src/application/wager-contracts.js';
-import { WagerTransactionKind as Kind } from '../src/domain/wager-transaction.js';
+import { WagerTransactionKind as Kind, WagerTransactionStatus as Status } from '../src/domain/wager-transaction.js';
 
 const suite = process.env.EVENTS_E2E === '1' ? describe : describe.skip;
 let orm: MikroORM;
@@ -270,7 +270,7 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       [pending.id],
     );
     const completed = await processor.retryPending(pending.id, w.walletId);
-    expect(completed?.status).toBe('PROCESSED');
+    expect(completed?.status).toBe(Status.Processed);
     expect(completed?.balance.amount).toBe('100.00');
     expect(await outboxCount(w.walletId)).toBe(5);
     await publishWallet(w.walletId, 5);
