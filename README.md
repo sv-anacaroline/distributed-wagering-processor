@@ -1,114 +1,123 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Distributed Wagering Processor
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Desafio técnico da Jungle Gaming: processamento financeiro distribuído de apostas, com foco em precisão monetária, idempotência, concorrência e recuperação após falhas.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+> **Estado atual:** apenas o starter NestJS e a infraestrutura declarativa foram configurados. Wallet, ledger, migrations, consumidores, workers e testes financeiros ainda serão implementados. Não confunda o endpoint `GET /` com um health check de produção.
 
-## Description
+## Stack
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+| Tecnologia | Uso |
+| --- | --- |
+| Bun **1.x** (referência: 1.4.4) | Runtime, gerenciamento de pacotes e testes |
+| NestJS + TypeScript strict | API |
+| PostgreSQL 17 | Banco local (AWS: RDS) |
+| SQS FIFO + FIFO DLQ | Mensageria (LocalStack/MiniStack local; SQS AWS real) |
+| Docker Compose | Infraestrutura local |
+| Terraform | Provisionamento local, AWS e aplicação Kubernetes |
+| EKS + ECR | Execução Kubernetes na AWS |
+| k6 | Testes iniciais de carga via container |
 
-## Project setup
+## Pré-requisitos
+
+**Desenvolvimento local:** Git, Docker Engine + Compose v2, Bun 1.x e acesso a um registro de pacotes. No Ubuntu:
 
 ```bash
-$ npm install
+sudo apt update
+sudo apt install -y git curl unzip
 ```
 
-## Compile and run the project
+- [Docker Engine no Ubuntu](https://docs.docker.com/engine/install/ubuntu/) ou Docker Desktop. Verifique `docker --version` e `docker compose version`.
+- [Instalação do Bun](https://bun.sh/docs/installation). Verifique `bun --version`; utilize Bun 1.x.
+- [LocalStack](https://docs.localstack.cloud/): versão recente requer `LOCALSTACK_AUTH_TOKEN` no `.env`. Se não tiver token, use a alternativa **MiniStack** documentada abaixo.
+- k6, PostgreSQL e Terraform **não precisam ser instalados no host para executar o Compose**, pois rodam como containers.
+
+**Para provisionamento AWS:** conta com acesso de IAM a VPC, EKS, EC2, ECR, RDS, SQS, Secrets Manager e IAM; [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.13, [kubectl](https://kubernetes.io/docs/tasks/tools/), Docker/Buildx e credenciais temporárias configuradas via perfil ou SSO. **EKS, EC2, NAT Gateway e RDS geram custos.**
+
+## Instalação da aplicação com Bun
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+git clone https://github.com/sv-anacaroline/distributed-wagering-processor.git
+cd distributed-wagering-processor
+bun install
+bun run start:dev
 ```
 
-## Run tests
+O starter responde em `http://localhost:3000/` com `Hello World!`.
+
+Comandos úteis:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+bun run build
+bun run lint
+bun run typecheck
+bun run test
+bun run test:e2e
+bun run test:cov
 ```
 
-## Deployment
+**Lockfile:** ainda é necessário gerar `bun.lock` via `bun install` em ambiente com acesso ao registro npm e versioná-lo. Depois, ajustar o Dockerfile para `bun install --frozen-lockfile` em um commit próprio. Não foi possível gerar esse arquivo neste ambiente.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Ambiente local com Docker e SQS provisionado pelo Terraform
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+cp .env.example .env
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Edite o `.env`:
 
-## Observability
+- **LocalStack:** use `AWS_EMULATOR_IMAGE=localstack/localstack:latest` e defina `LOCALSTACK_AUTH_TOKEN`.
+- **MiniStack (sem token):** use `AWS_EMULATOR_IMAGE=ministackorg/ministack:1.5.40`.
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+Não versione o arquivo `.env`, tokens, credenciais ou arquivos de estado do Terraform.
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+```bash
+docker compose config
+docker compose up --build -d
+docker compose ps
+docker compose logs terraform-local
+curl http://localhost:3000/
+```
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+O Compose inicia **API Bun, PostgreSQL 17, emulador AWS e job de Terraform** que cria:
 
-## Resources
+- `wager-transactions.fifo` (fila de entrada).
+- `wager-transactions-dlq.fifo` (dead-letter queue).
+- `wager-events.fifo` (saída futura da transactional outbox).
 
-Check out a few resources that may come in handy when working with NestJS:
+Banco e estado Terraform local usam volumes persistentes. **`docker compose down -v` apaga os volumes e os dados locais.**
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Para simular três processos independentes da aplicação:
 
-## Support
+```bash
+docker compose --profile distributed up --build -d --scale api-replica=2
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Isso **não prova** a correção concorrente: wallet, ledger, idempotência e consumers ainda serão implementados.
 
-## Stay in touch
+## Testes de performance (k6)
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Smoke test do **endpoint inicial**, ainda sem transações financeiras:
 
-## License
+```bash
+# Com os containers configurados e o Bun instalado:
+bun run test:load
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+# Ou sem Bun no host:
+docker compose -f docker-compose.yml -f docker-compose.k6.yml \
+  --profile performance run --rm k6
+```
+
+No `.env`, configure `K6_VUS` e `K6_DURATION`. O cenário reporta latências (incluindo p50/p95/p99), erros HTTP e checks. **A carga financeira com 50 requisições paralelas e >=3 instâncias será implementada depois.**
+
+## AWS / EKS / Terraform
+
+A configuração para AWS está em `infra/terraform/aws`; o Deployment Kubernetes em `infra/terraform/eks-app`. Consulte o guia [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) para instalar, revisar o plano, enviar a imagem Bun ao ECR e implantar a aplicação.
+
+**Não execute `terraform apply` sem verificar custos e o plano.** O EKS usa três réplicas por padrão, um Service interno, Pod Identity e senha RDS gerenciada pelo Secrets Manager.
+
+## Limitações atuais
+
+- Sem ORM, migrations de domínio, validação financeira, inbox/outbox ou consumo efetivo de SQS.
+- Kubernetes usa `GET /` temporariamente nas probes; substituir por `/health/live` e `/health/ready`.
+- Terraform AWS é um exemplo de desenvolvimento com state local; não é um ambiente de produção pronto.
+- Provisionamento real e integração ponta a ponta ainda dependem de validação com Docker, Bun, Terraform e uma conta AWS.

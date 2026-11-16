@@ -1,0 +1,9 @@
+aws_region                 = "us-east-1"
+cluster_name               = "distributed-wagering-dev-eks"
+image_repository           = "123456789012.dkr.ecr.us-east-1.amazonaws.com/distributed-wagering-dev"
+image_tag                  = "REPLACE_WITH_PUSHED_IMAGE_TAG"
+postgres_host              = "REPLACE_FROM_AWS_TERRAFORM_OUTPUT"
+postgres_secret_arn        = "REPLACE_FROM_AWS_TERRAFORM_OUTPUT"
+sqs_wager_transactions_url = "REPLACE_FROM_AWS_TERRAFORM_OUTPUT"
+sqs_wager_events_url       = "REPLACE_FROM_AWS_TERRAFORM_OUTPUT"
+replicas                   = 3

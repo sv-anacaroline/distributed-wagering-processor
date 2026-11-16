@@ -1,0 +1,10 @@
+node_modules
+.git
+.terraform
+**/.terraform
+**/*.tfstate*
+**/*.tfvars
+.env
+coverage
+dist
+*.zip

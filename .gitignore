@@ -1,29 +1,23 @@
-# See http://help.github.com/ignore-files/ for more about ignoring files.
-
-# project files
+# Secrets
 .env
+.env.*
+!.env.example
+*.tfvars
+!*.tfvars.example
+*.tfstate
+*.tfstate.*
+.terraform/
+crash.log
+*.tfplan
 
-# compiled output
-/dist
-/tmp
-/out-tsc
-/*.tsbuildinfo
+# Build and dependencies
+node_modules/
+dist/
+tmp/
+*.tsbuildinfo
+coverage/
 
-# dependencies
-/node_modules
-
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
-
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# IDE
+.DS_Store
+.idea/
+.vscode/
