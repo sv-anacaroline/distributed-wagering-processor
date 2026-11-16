@@ -17,6 +17,7 @@ describe('stable HTTP error taxonomy', () => {
   it('maps transient infrastructure failures to 503 and masks unknown errors', () => {
     expect(httpError({ driverException: { code: '08006' } }).status).toBe(503);
     expect(httpError({ cause: { code: '40P01' } }).code).toBe('INFRASTRUCTURE_UNAVAILABLE');
+    expect(httpError({ code: 'ECONNREFUSED' }).status).toBe(503);
     expect(httpError(new Error('secret')).message).toBe('Internal server error');
   });
 });

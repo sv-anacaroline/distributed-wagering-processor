@@ -33,7 +33,7 @@ export function httpError(error: unknown): { status: number; code: string; messa
     return { status, code: codes[status] ?? 'HTTP_ERROR', message: error.message };
   }
   const code = databaseCode(error);
-  if (code && (code.startsWith('08') || ['40001', '40P01', '55P03', '53300', '57P01'].includes(code))) {
+  if (code && (code.startsWith('08') || ['40001', '40P01', '55P03', '53300', '57P01', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN'].includes(code))) {
     return { status: HttpStatus.SERVICE_UNAVAILABLE, code: 'INFRASTRUCTURE_UNAVAILABLE', message: 'Temporary database error' };
   }
   return { status: 500, code: 'INTERNAL_ERROR', message: 'Internal server error' };
