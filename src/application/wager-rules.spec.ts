@@ -272,7 +272,8 @@ describe('financial invariants — table-driven and reversible sequences', () =>
       const credit = applied(w, tx(Kind.Win, { id: 'win', externalTransactionId: 'win-ext', amount }));
       expect(debit.ledgerEntry?.isBalanced()).toBe(true);
       expect(credit.ledgerEntry?.isBalanced()).toBe(true);
-      expect(debit.ledgerEntry?.balanceAfter.equals(credit.ledgerEntry!.balanceBefore)).toBe(true);
+      if (!debit.ledgerEntry || !credit.ledgerEntry) throw new Error('Missing ledger movement');
+      expect(debit.ledgerEntry.balanceAfter.equals(credit.ledgerEntry.balanceBefore)).toBe(true);
       expect(w.balance.toJSON().amount).toBe('100.00');
       expect(w.version).toBe(3);
     }
