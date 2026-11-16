@@ -8,18 +8,18 @@
   "packageManager": "bun@1.4.4",
   "scripts": {
     "build": "bunx --bun nest build",
-    "format": "bunx --bun prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"performance/**/*.js\"",
     "start": "bun src/main.ts",
     "start:dev": "bun --watch src/main.ts",
     "start:debug": "bun --inspect --watch src/main.ts",
     "start:prod": "bun dist/main.js",
-    "lint": "bunx --bun oxlint src/ test/",
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"performance/**/*.js\"",
     "typecheck": "bunx --bun tsc --noEmit",
     "test": "bun test ./src",
     "test:watch": "bun test --watch ./src",
     "test:cov": "bun test --coverage ./src",
     "test:e2e": "bun test ./test",
-    "test:load": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm k6",
+    "test:load": "bun run test:load:smoke",
     "db:debug": "bunx --bun mikro-orm debug --config ./src/mikro-orm.config.ts",
     "db:migrate:create": "bunx --bun mikro-orm migration:create --config ./src/mikro-orm.config.ts",
     "db:migrate:up": "bunx --bun mikro-orm migration:up --config ./src/mikro-orm.config.ts",
@@ -27,7 +27,15 @@
     "db:migrate:rollback": "bun run db:migrate:down",
     "db:migrate:pending": "bunx --bun mikro-orm migration:pending --config ./src/mikro-orm.config.ts",
     "db:migrate:list": "bunx --bun mikro-orm migration:list --config ./src/mikro-orm.config.ts",
-    "db:migrate:check": "bunx --bun mikro-orm migration:check --config ./src/mikro-orm.config.ts"
+    "db:migrate:check": "bunx --bun mikro-orm migration:check --config ./src/mikro-orm.config.ts",
+    "lint:fix": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"performance/**/*.js\" --fix",
+    "lint:quick": "oxlint src/ test/ performance/",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"performance/**/*.js\"",
+    "test:load:smoke": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=smoke k6 run /scripts/scenarios/smoke.js",
+    "test:load:load": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=load k6 run /scripts/scenarios/load.js",
+    "test:load:stress": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=stress k6 run /scripts/scenarios/stress.js",
+    "test:load:spike": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=spike k6 run /scripts/scenarios/spike.js",
+    "test:load:soak": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=soak k6 run /scripts/scenarios/soak.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
@@ -57,6 +65,9 @@
     "supertest": "^7.0.0",
     "tslib": "^2.8.1",
     "typescript": "^6.0.2",
-    "@mikro-orm/cli": "7.2.9"
+    "@mikro-orm/cli": "7.2.9",
+    "eslint": "10.11.0",
+    "@eslint/js": "10.0.1",
+    "typescript-eslint": "8.72.2"
   }
 }

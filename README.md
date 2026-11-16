@@ -55,7 +55,7 @@ bun run test:e2e
 bun run test:cov
 ```
 
-**Lockfile:** ainda é necessário gerar `bun.lock` via `bun install` em ambiente com acesso ao registro npm e versioná-lo. Depois, ajustar o Dockerfile para `bun install --frozen-lockfile` em um commit próprio. Não foi possível gerar esse arquivo neste ambiente.
+**Lockfile:** `bun.lock` é versionado e a instalação no CI/Docker utiliza `bun install --frozen-lockfile` para garantir resolução reproduzível.
 
 ## Persistência e migrations (MikroORM)
 
@@ -134,17 +134,39 @@ docker compose --profile distributed up --build -d --scale api-replica=2
 
 Isso **não prova** a correção concorrente: wallet, ledger, idempotência e consumers ainda serão implementados.
 
+## Qualidade de código e testes
+
+A configuração em [docs/CODE_QUALITY.md](docs/CODE_QUALITY.md) descreve EditorConfig,
+ESLint com type-check, TypeScript strict, Prettier e testes com Bun.
+
+```bash
+bun install
+bun run lint
+bun run lint:fix
+bun run typecheck
+bun run format:check
+bun run test
+bun run test:e2e
+bun run test:cov
+```
+
+Os PRs para a `master` executam **três checks independentes**: lint/formatação/TypeScript, testes/coverage/PostgreSQL e validação dos cenários k6. O deploy continua simulado. Configure ambos como *required checks* em Settings → Rules → Rulesets para bloquear merges com CI falhando.
+
+**Testes usam Bun Test**, compatível com a API de asserções Jest. Não adicionamos um segundo test runner porque Bun 1.x é obrigatório no desafio.
+
 ## Testes de performance (k6)
 
-Smoke test do **endpoint inicial**, ainda sem transações financeiras:
+Veja [docs/PERFORMANCE.md](docs/PERFORMANCE.md). Scripts k6: smoke, load, stress, spike e soak.
+Todos testam **somente a rota inicial** por enquanto, ainda sem transações financeiras:
 
 ```bash
 # Com os containers configurados e o Bun instalado:
-bun run test:load
-
-# Ou sem Bun no host:
-docker compose -f docker-compose.yml -f docker-compose.k6.yml \
-  --profile performance run --rm k6
+bun run test:load                # alias do smoke
+bun run test:load:smoke
+bun run test:load:load
+bun run test:load:stress
+bun run test:load:spike
+bun run test:load:soak
 ```
 
 No `.env`, configure `K6_VUS` e `K6_DURATION`. O cenário reporta latências (incluindo p50/p95/p99), erros HTTP e checks. **A carga financeira com 50 requisições paralelas e >=3 instâncias será implementada depois.**
