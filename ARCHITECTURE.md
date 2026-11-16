@@ -1,15 +1,17 @@
 # ARCHITECTURE — Distributed Wagering Processor
 
-## Escopo desta etapa
+## Visão geral
 
-Modelagem enxuta, sem decorators NestJS, MikroORM ou infraestrutura dentro de
-`src/domain/`. Cada objeto, evento e método com comportamento foi acompanhado
-de testes unitários pelo Bun. O PostgreSQL fornece as garantias persistentes.
+Domínio financeiro enxuto, sem decorators NestJS, MikroORM ou infraestrutura
+dentro de `src/domain/`. O caso de uso `ProcessWager` já coordena operações
+financeiras e Outbox em transações PostgreSQL. Testes unitários e de integração
+com banco real asseguram invariantes, inclusive com três processos Bun
+independentes. Nenhum mecanismo de consistência depende de memória local.
 
-**Este PR não implementa a API de wallet/wagering, o processamento SQS, o
-use case transacional, o publisher, a reconciliação ou testes de concorrência
-com múltiplos processos.** Essas são as próximas entregas; não atribuir
-garantia ponta a ponta antes delas.
+**Ainda não implementamos endpoints HTTP financeiros, consumidores SQS,
+publisher da Outbox, reconciliação de produção nem deploy EKS dos workers.**
+A seção 8 valida concorrência por wallet no PostgreSQL, não a entrega em
+ordem dos eventos por SQS.
 
 ## Money
 
@@ -38,9 +40,10 @@ garantia ponta a ponta antes delas.
   o valor positivo e a aritmética exata antes de alterar Wallet.
 - Rehidratação reconstruirá estado persistido, sem reexecutar as transições.
 - **O modelo em memória não substitui o lock por wallet e a transação SQL**.
-  Futuro caso de uso: `SELECT ... FOR UPDATE` por `walletId`, efetuar
-  mudanças, persistir wallet + ledger + wager + inbox (quando SQS) + outbox
-  juntos, então fazer commit; ack SQS apenas depois.
+  O caso de uso usa `SELECT ... FOR NO KEY UPDATE` por `walletId`, efetua
+  movimentações e persiste wallet + ledger + wager + outbox no mesmo commit.
+  Quando o consumidor SQS existir, também deverá persistir Inbox nessa
+  mesma transação e enviar ack somente depois do commit.
 - O ledger SQL tem `wallet_version`. O repositório futuro obtém esse valor
   de `Wallet.version` no mesmo caso de uso em que grava o lançamento.
 
