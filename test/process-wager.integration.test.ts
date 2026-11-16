@@ -266,6 +266,30 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
     ).toBe(2);
   });
 
+  it('rejects ambiguous collisions when idempotency and provider identity belong to two different transactions', async () => {
+    const wallet = await opening();
+    const a = wager(wallet, Kind.Loss);
+    const b = wager(wallet, Kind.Loss);
+    await processor.process(a);
+    await processor.process(b);
+    let conflict: unknown;
+    try {
+      await processor.process({
+        ...a,
+        externalTransactionId: b.externalTransactionId,
+      });
+    } catch (error: unknown) {
+      conflict = error;
+    }
+    expect(conflict).toBeInstanceOf(IdempotencyConflictError);
+    expect(
+      await count(
+        'select count(*)::text as count from wager_transactions where wallet_id=?::uuid and kind=?',
+        [wallet.walletId, Kind.Loss],
+      ),
+    ).toBe(2);
+  });
+
   it('serializes fifty duplicate BET requests into one ledger entry', async () => {
     const wallet = await opening();
     const bet = wager(wallet, Kind.Bet);

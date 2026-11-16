@@ -129,6 +129,16 @@ fazem parte das próximas entregas.
 transação financeira REJECTED. Para erros de infraestrutura desconhecidos,
 a transação SQL faz rollback integral; o SQS poderá fazer retry futuramente.
 
+## Concorrência por wallet (seção 8)
+
+`ProcessWager` usa `FOR NO KEY UPDATE` na wallet, idempotência
+PostgreSQL e incrementa `wallet.version` apenas quando o saldo muda.
+Transações temporariamente abortadas por deadlock, serialization failure
+ou lock timeout são reexecutadas do começo com até três tentativas.
+As verificações e testes distribuídos estão descritos em
+[ARCHITECTURE.md](../ARCHITECTURE.md). Não dependem do transporte HTTP ou
+do SQS.
+
 ## Testes
 
 ```bash

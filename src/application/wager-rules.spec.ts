@@ -231,3 +231,67 @@ describe('applyWagerRules', () => {
     expect(w.version).toBe(1);
   });
 });
+
+describe('financial invariants — table-driven and reversible sequences', () => {
+  it('enforces exact-balance and one-cent boundary cases without rounding', () => {
+    const cases: Array<{
+      readonly balance: string;
+      readonly stake: string;
+      readonly expected: string;
+      readonly status: Status;
+    }> = [
+      { balance: '0.00', stake: '0.01', expected: '0.00', status: Status.Rejected },
+      { balance: '0.01', stake: '0.01', expected: '0.00', status: Status.Processed },
+      { balance: '0.01', stake: '0.02', expected: '0.01', status: Status.Rejected },
+      { balance: '10.00', stake: '9.99', expected: '0.01', status: Status.Processed },
+      { balance: '10.00', stake: '10.00', expected: '0.00', status: Status.Processed },
+      { balance: '10.00', stake: '10.01', expected: '10.00', status: Status.Rejected },
+      {
+        balance: '999999999999999999.99',
+        stake: '0.01',
+        expected: '999999999999999999.98',
+        status: Status.Processed,
+      },
+    ];
+    for (const item of cases) {
+      const w = wallet(item.balance);
+      const result = applied(w, tx(Kind.Bet, { amount: item.stake }));
+      expect(result.transaction.status).toBe(item.status);
+      expect(w.balance.toJSON().amount).toBe(item.expected);
+      expect(w.version).toBe(item.status === Status.Processed ? 2 : 1);
+      expect(result.ledgerEntry?.isBalanced() ?? true).toBe(true);
+      expect(result.ledgerEntry !== undefined).toBe(item.status === Status.Processed);
+    }
+  });
+
+  it('keeps exact ledger continuity under a debit followed by an equal credit', () => {
+    for (const amount of ['0.01', '0.10', '25.00', '80.00', '100.00']) {
+      const w = wallet();
+      const debit = applied(w, tx(Kind.Bet, { id: 'bet', amount }));
+      const credit = applied(
+        w,
+        tx(Kind.Win, { id: 'win', externalTransactionId: 'win-ext', amount }),
+      );
+      expect(debit.ledgerEntry?.isBalanced()).toBe(true);
+      expect(credit.ledgerEntry?.isBalanced()).toBe(true);
+      if (!debit.ledgerEntry || !credit.ledgerEntry) throw new Error('Missing ledger movement');
+      expect(debit.ledgerEntry.balanceAfter.equals(credit.ledgerEntry.balanceBefore)).toBe(true);
+      expect(w.balance.toJSON().amount).toBe('100.00');
+      expect(w.version).toBe(3);
+    }
+  });
+
+  it('never consumes wallet version for LOSS or a rejected command', () => {
+    const w = wallet('0.01');
+    for (const index of [1, 2, 3, 4]) {
+      const loss = applied(w, tx(Kind.Loss, { id: 'loss-' + index }));
+      expect(loss.transaction.status).toBe(Status.Processed);
+      expect(loss.ledgerEntry).toBeUndefined();
+    }
+    const rejected = applied(w, tx(Kind.Bet, { amount: '0.02' }));
+    expect(rejected.transaction.status).toBe(Status.Rejected);
+    expect(rejected.ledgerEntry).toBeUndefined();
+    expect(w.balance.toJSON().amount).toBe('0.01');
+    expect(w.version).toBe(1);
+  });
+});
