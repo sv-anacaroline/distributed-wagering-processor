@@ -181,7 +181,7 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
   it('returns reconciliation without changing the wallet or its ledger and exposes the metric', async () => {
     const wallet = await createWallet();
     await submit(wager(wallet), uid(), 200);
-    const first = await request(http).post(`/wallets/${wallet.id}/reconciliation`).expect(201);
+    const first = await request(http).post(`/wallets/${wallet.id}/reconciliation`).expect(200);
     const reconciliation = first.body as {
       walletId: string; storedBalance: { amount: string };
       calculatedBalance: { amount: string }; difference: { amount: string };
@@ -193,7 +193,7 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
     expect(reconciliation.calculatedBalance.amount).toBe('975.00');
     expect(reconciliation.difference.amount).toBe('0.00');
     expect(reconciliation.checkedEntries).toBe(2);
-    const second = await request(http).post(`/wallets/${wallet.id}/reconciliation`).expect(201);
+    const second = await request(http).post(`/wallets/${wallet.id}/reconciliation`).expect(200);
     expect(second.body).toEqual(first.body);
     const metric = await request(http).get('/internal/metrics').expect(200);
     expect(metric.text).toContain('wallet_reconciliation_divergences_total');
