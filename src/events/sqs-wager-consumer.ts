@@ -63,11 +63,6 @@ export class SqsWagerConsumer {
         messageId: parsed.messageId,
         payloadHash: parsed.payloadHash,
       });
-      // Here the complete PostgreSQL transaction, including Inbox and Outbox, committed.
-      await this.sqs.send(new DeleteMessageCommand({
-        QueueUrl: this.queues.incoming, ReceiptHandle: message.ReceiptHandle,
-      }));
-      return 'ack';
     } catch (error: unknown) {
       // An AWS ack failure is treated as transient; the DB Inbox makes redelivery safe.
       const attempts = receiveCount(message);
@@ -85,6 +80,13 @@ export class SqsWagerConsumer {
       }));
       return 'retry';
     }
+    // Important: a failed DeleteMessage is NOT a business failure and must
+    // NEVER route an already committed financial transaction to the DLQ.
+    // SQS can redeliver; Inbox/command idempotency safely return the original.
+    await this.sqs.send(new DeleteMessageCommand({
+      QueueUrl: this.queues.incoming, ReceiptHandle: message.ReceiptHandle,
+    }));
+    return 'ack';
   }
 
   private async toDlq(message: Message, error: unknown): Promise<void> {

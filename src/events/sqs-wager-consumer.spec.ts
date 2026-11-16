@@ -92,6 +92,21 @@ describe('SQS wager worker delivery policy', () => {
     expect(commands).toHaveLength(1);
     expect(commands[0]).toBeInstanceOf(SendMessageCommand);
   });
+  it('never DLQs a committed wager if the SQS DeleteMessage acknowledgement fails', async () => {
+    const sent: SentCommand[] = [];
+    const sqs = { send: (command: SentCommand) => {
+      sent.push(command);
+      return Promise.reject(new Error('ack transport unavailable'));
+    } };
+    const worker = new SqsWagerConsumer(sqs as never, queues, {
+      processFromInbox: () => Promise.resolve({} as never),
+    });
+    let caught: unknown;
+    try { await worker.processOne(message()); } catch (error: unknown) { caught = error; }
+    expect(caught).toBeInstanceOf(Error);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toBeInstanceOf(DeleteMessageCommand);
+  });
   it('releases unstarted deliveries during SIGTERM without touching PostgreSQL', async () => {
     const { worker, sent } = setup(() => { throw new Error('should not run'); });
     const controller = new AbortController();
