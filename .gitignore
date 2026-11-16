@@ -16,6 +16,8 @@ dist/
 tmp/
 *.tsbuildinfo
 coverage/
+reports/
+performance/results/
 
 # IDE
 .DS_Store
