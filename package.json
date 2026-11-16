@@ -36,7 +36,8 @@
     "test:load:stress": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=stress k6 run /scripts/scenarios/stress.js",
     "test:load:spike": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=spike k6 run /scripts/scenarios/spike.js",
     "test:load:soak": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=soak k6 run /scripts/scenarios/soak.js",
-    "worker:references": "bun src/jobs/retry-references.ts"
+    "worker:references": "bun src/jobs/retry-references.ts",
+    "test:concurrency": "bun test ./test/distributed-concurrency.integration.test.ts ./test/concurrency-locks.integration.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",

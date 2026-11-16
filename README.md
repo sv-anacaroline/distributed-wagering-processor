@@ -122,6 +122,20 @@ docker compose --profile reference-worker up -d reference-retry-worker
 Consulte [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md) para o comportamento
 de cada operação, códigos de falha, reversões cruzadas e testes.
 
+## Concorrência sem API nem SQS
+
+A seção 8 é validada com três processos Bun independentes sobre PostgreSQL
+compartilhado, lock `FOR NO KEY UPDATE` por wallet, versão do ledger,
+retries SQL limitados e testes de idempotência distribuída. Carteiras
+distintas processam em paralelo; a mesma wallet continua serializada.
+
+```bash
+bun run test:concurrency
+```
+
+Consulte [ARCHITECTURE.md](ARCHITECTURE.md) para as garantias de
+ordenação, os índices utilizados e o diagnóstico de contenção.
+
 ## Integração contínua (GitHub Actions)
 
 O workflow `.github/workflows/ci.yml` executa em **pull requests para `master` e pushes na `master`**. Ele instala as dependências via Bun, faz typecheck, lint, testes, build e valida a conexão do MikroORM em um PostgreSQL efêmero.
