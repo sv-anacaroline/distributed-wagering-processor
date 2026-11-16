@@ -2,7 +2,7 @@
 
 Desafio técnico da Jungle Gaming: processamento financeiro distribuído de apostas, com foco em precisão monetária, idempotência, concorrência e recuperação após falhas.
 
-> **Estado atual:** apenas o starter NestJS e a infraestrutura declarativa foram configurados. Wallet, ledger, migrations, consumidores, workers e testes financeiros ainda serão implementados. Não confunda o endpoint `GET /` com um health check de produção.
+> **Estado atual:** starter NestJS, infraestrutura declarativa e MikroORM/PostgreSQL configurados. As migrations estão preparadas, mas nenhuma tabela de domínio foi criada. Wallet, ledger, consumidores, workers e testes financeiros ainda serão implementados. Não confunda o endpoint `GET /` com um health check de produção.
 
 ## Stack
 
@@ -10,7 +10,7 @@ Desafio técnico da Jungle Gaming: processamento financeiro distribuído de apos
 | --- | --- |
 | Bun **1.x** (referência: 1.4.4) | Runtime, gerenciamento de pacotes e testes |
 | NestJS + TypeScript strict | API |
-| PostgreSQL 17 | Banco local (AWS: RDS) |
+| PostgreSQL 17 + MikroORM 7 | Persistência e migrations versionadas (AWS: RDS) |
 | SQS FIFO + FIFO DLQ | Mensageria (LocalStack/MiniStack local; SQS AWS real) |
 | Docker Compose | Infraestrutura local |
 | Terraform | Provisionamento local, AWS e aplicação Kubernetes |
@@ -56,6 +56,46 @@ bun run test:cov
 ```
 
 **Lockfile:** ainda é necessário gerar `bun.lock` via `bun install` em ambiente com acesso ao registro npm e versioná-lo. Depois, ajustar o Dockerfile para `bun install --frozen-lockfile` em um commit próprio. Não foi possível gerar esse arquivo neste ambiente.
+
+## Persistência e migrations (MikroORM)
+
+O MikroORM utiliza o PostgreSQL configurado em `src/mikro-orm.config.ts`, com integração pelo `MikroOrmModule` no NestJS. As entidades de persistência e respectivas constraints serão criadas em tarefas de domínio; **não há migrations de tabelas financeiras nesta etapa**.
+
+Para trabalhar localmente, copie `.env.example` para `.env` e inicie o PostgreSQL:
+
+```bash
+cp .env.example .env
+docker compose up -d postgres
+bun install
+bun run db:debug
+bun run start:dev
+```
+
+No host, o Bun lê o `.env` e conecta em `127.0.0.1:${POSTGRES_PORT}`. Dentro do Compose, a API usa `DB_HOST=postgres`. Na AWS, o RDS usa credenciais fornecidas pelo Secrets Manager.
+
+```bash
+# Gerar depois de modelar uma nova entidade
+bun run db:migrate:create --name=add_wallet_table
+
+# Inspecionar
+bun run db:migrate:pending
+bun run db:migrate:list
+bun run db:migrate:check
+
+# Aplicar migrations pendentes (uma execução controlada)
+bun run db:migrate:up
+
+# Reverter apenas a última migration
+bun run db:migrate:rollback
+```
+
+As migrations são transacionais, versionadas e com rollback revisável. **Não** executamos migrations automaticamente no bootstrap dos pods. Consulte [docs/PERSISTENCE.md](docs/PERSISTENCE.md).
+
+## Integração contínua (GitHub Actions)
+
+O workflow `.github/workflows/ci.yml` executa em **pull requests para `master` e pushes na `master`**. Ele instala as dependências via Bun, faz typecheck, lint, testes, build e valida a conexão do MikroORM em um PostgreSQL efêmero.
+
+Após um push na `master`, um segundo job **simula** um roteiro de deploy AWS: planejamento Terraform, build/push ECR, migração única, rollout EKS e smoke tests. Esse job executa **somente comandos `echo`**: não autentica na AWS e não faz deploy.
 
 ## Ambiente local com Docker e SQS provisionado pelo Terraform
 
@@ -117,7 +157,7 @@ A configuração para AWS está em `infra/terraform/aws`; o Deployment Kubernete
 
 ## Limitações atuais
 
-- Sem ORM, migrations de domínio, validação financeira, inbox/outbox ou consumo efetivo de SQS.
+- MikroORM instalado e scripts de migrations configurados, mas ainda sem entidades, migrations de domínio, validação financeira, inbox/outbox ou consumo efetivo de SQS.
 - Kubernetes usa `GET /` temporariamente nas probes; substituir por `/health/live` e `/health/ready`.
 - Terraform AWS é um exemplo de desenvolvimento com state local; não é um ambiente de produção pronto.
 - Provisionamento real e integração ponta a ponta ainda dependem de validação com Docker, Bun, Terraform e uma conta AWS.
