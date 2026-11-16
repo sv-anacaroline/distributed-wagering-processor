@@ -72,6 +72,8 @@ jobs:
           bun-version: "1.4.4"
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Apply versioned schema migrations
+        run: bun run db:migrate:up
       - name: Unit tests
         run: bun run test
       - name: E2E tests with PostgreSQL
@@ -84,6 +86,10 @@ jobs:
         run: bun run db:debug
       - name: Inspect pending migrations
         run: bun run db:migrate:pending
+      - name: Verify schema rollback and reapply on disposable CI database
+        run: |
+          bun run db:migrate:down
+          bun run db:migrate:up
 
   k6-config:
     name: Validate k6 scenario configuration
