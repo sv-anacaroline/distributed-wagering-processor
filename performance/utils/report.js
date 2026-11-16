@@ -19,12 +19,13 @@ export function handleSummary(data) {
   };
   return {
     [`/results/${scenario}-summary.json`]: JSON.stringify(summary, null, 2),
-    stdout: [
-      `k6 scenario=${scenario}`,
-      `requests=${summary.requests} rps=${summary.rps.toFixed(2)}`,
-      `p50=${summary.p50_ms.toFixed(2)}ms p95=${summary.p95_ms.toFixed(2)}ms p99=${summary.p99_ms.toFixed(2)}ms`,
-      `errors=${(summary.error_rate * 100).toFixed(2)}%`,
-      'Financial correctness is NOT measured by this HTTP baseline.',
-    ].join('\n') + '\n',
+    stdout:
+      [
+        `k6 scenario=${scenario}`,
+        `requests=${summary.requests} rps=${summary.rps.toFixed(2)}`,
+        `p50=${summary.p50_ms.toFixed(2)}ms p95=${summary.p95_ms.toFixed(2)}ms p99=${summary.p99_ms.toFixed(2)}ms`,
+        `errors=${(summary.error_rate * 100).toFixed(2)}%`,
+        'Financial correctness is NOT measured by this HTTP baseline.',
+      ].join('\n') + '\n',
   };
 }
