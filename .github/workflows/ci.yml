@@ -27,9 +27,8 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
-      # A bun.lock is not yet present. Once generated, enforce --frozen-lockfile.
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
       - name: ESLint with type-aware rules
         run: bun run lint
       - name: TypeScript strict typecheck
@@ -38,19 +37,6 @@ jobs:
       - name: Verify formatting
         if: success() || failure()
         run: bun run format:check
-      - name: Inspect test file formatting (temporary)
-        if: always()
-        run: |
-          bunx --bun prettier --write test/app.e2e.test.ts
-          git diff -- test/app.e2e.test.ts
-      - name: Export Bun lockfile for initial pinning (temporary)
-        if: always()
-        run: |
-          if [ -f bun.lock ]; then
-            echo "__BUN_LOCK_START__"
-            base64 -w 120 bun.lock | sed 's/^/__LOCK_CHUNK__/'
-            echo "__BUN_LOCK_END__"
-          fi
 
   quality:
     name: Unit, E2E, coverage and PostgreSQL
@@ -85,7 +71,7 @@ jobs:
         with:
           bun-version: "1.4.4"
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
       - name: Unit tests
         run: bun run test
       - name: E2E tests with PostgreSQL

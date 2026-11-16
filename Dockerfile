@@ -1,8 +1,8 @@
 # Bun is the runtime, package manager and test runner.
 FROM oven/bun:1.4.4 AS dependencies
 WORKDIR /app
-COPY package.json bunfig.toml ./
-RUN bun install
+COPY package.json bun.lock bunfig.toml ./
+RUN bun install --frozen-lockfile
 
 FROM dependencies AS development
 COPY . .

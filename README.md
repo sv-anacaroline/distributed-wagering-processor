@@ -55,7 +55,7 @@ bun run test:e2e
 bun run test:cov
 ```
 
-**Lockfile:** ainda é necessário gerar `bun.lock` via `bun install` em ambiente com acesso ao registro npm e versioná-lo. Depois, ajustar o Dockerfile para `bun install --frozen-lockfile` em um commit próprio. Não foi possível gerar esse arquivo neste ambiente.
+**Lockfile:** `bun.lock` é versionado e a instalação no CI/Docker utiliza `bun install --frozen-lockfile` para garantir resolução reproduzível.
 
 ## Persistência e migrations (MikroORM)
 

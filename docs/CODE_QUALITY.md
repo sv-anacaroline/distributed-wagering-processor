@@ -43,4 +43,4 @@ Para efetivamente **impedir merge com checks falhando**, habilite uma *branch ru
 
 ## Reprodutibilidade
 
-Ainda falta versionar `bun.lock` e então trocar `bun install` por `bun install --frozen-lockfile` no Docker e CI. Não fazer lockfile manual; gerar com Bun em ambiente com acesso ao registro npm.
+O arquivo `bun.lock` foi gerado pelo Bun no CI e está versionado. O Docker e o GitHub Actions usam `bun install --frozen-lockfile`. Alterações de dependências exigem regenerar o lock com `bun install` e versionar a diferença.
