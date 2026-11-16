@@ -18,7 +18,8 @@
     "test": "bun test ./src",
     "test:watch": "bun test --watch ./src",
     "test:cov": "bun test --coverage ./src",
-    "test:e2e": "bun test ./test"
+    "test:e2e": "bun test ./test",
+    "test:load": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm k6"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
