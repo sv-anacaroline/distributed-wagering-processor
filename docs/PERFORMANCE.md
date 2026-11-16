@@ -17,7 +17,9 @@ bun run test:load:spike
 bun run test:load:soak
 ```
 
-O alias `bun run test:load` executa smoke. Pode configurar no `.env`:
+O alias `bun run test:load` executa smoke. Os comandos usam `id -u`/`id -g`
+para executar o k6 com o mesmo usuário do host e preservar permissões de escrita
+em `performance/results/`. Os comandos pressupõem shell POSIX (Linux/macOS). Pode configurar no `.env`:
 - `K6_VUS`: VUs-base (5).
 - `K6_DURATION`: duração de smoke (15s).
 - `K6_STAGE_DURATION`: duração padrão de estágio (30s).

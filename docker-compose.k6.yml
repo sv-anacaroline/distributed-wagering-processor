@@ -2,6 +2,7 @@ services:
   k6:
     image: grafana/k6:1.8.2
     profiles: [performance]
+    user: "${K6_UID:-1000}:${K6_GID:-1000}"
     volumes:
       - ./performance:/scripts:ro
       - ./performance/results:/results
