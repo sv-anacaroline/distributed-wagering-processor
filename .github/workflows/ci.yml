@@ -63,6 +63,7 @@ jobs:
       DB_NAME: wagering
       DB_USER: wagering
       DB_PASSWORD: ci_only_password
+      HTTP_AUTH_MODE: disabled
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
