@@ -4,6 +4,15 @@ import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import ormConfig from './mikro-orm.config.js';
+import { WalletService } from './http/wallet.service.js';
+import { WagerService } from './http/wager.service.js';
+import { ReconciliationService } from './http/reconciliation.service.js';
+import { WalletController } from './http/wallet.controller.js';
+import { WagerController, ProviderWagerController } from './http/wager.controller.js';
+import { HealthController, HealthService } from './http/health.controller.js';
+import { MetricsController } from './http/metrics.controller.js';
+import { HttpExceptionFilter } from './http/http-exception.filter.js';
+import { APP_FILTER } from '@nestjs/core';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -19,7 +28,21 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       serviceId: 'distributed-wagering-processor',
     }),
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  controllers: [
+    AppController,
+    WalletController,
+    WagerController,
+    ProviderWagerController,
+    HealthController,
+    MetricsController,
+  ],
+  providers: [
+    AppService,
+    WalletService,
+    WagerService,
+    ReconciliationService,
+    HealthService,
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+  ],
 })
 export class AppModule {}

@@ -131,10 +131,10 @@ resource "kubernetes_deployment_v1" "api" {
             requests = { cpu = "100m", memory = "128Mi" }
             limits   = { cpu = "500m", memory = "512Mi" }
           }
-          # Temporary starter route; replace with /health/live and /health/ready.
+          # Public health endpoints. Ready additionally checks PostgreSQL and SQS reachability.
           startup_probe {
             http_get {
-              path = "/"
+              path = "/health/live"
               port = "http"
             }
             failure_threshold = 20
@@ -142,14 +142,14 @@ resource "kubernetes_deployment_v1" "api" {
           }
           readiness_probe {
             http_get {
-              path = "/"
+              path = "/health/ready"
               port = "http"
             }
             period_seconds = 5
           }
           liveness_probe {
             http_get {
-              path = "/"
+              path = "/health/live"
               port = "http"
             }
             period_seconds = 10

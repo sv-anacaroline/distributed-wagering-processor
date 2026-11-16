@@ -95,6 +95,17 @@ async function balance(walletId: string): Promise<{ balance: string; version: nu
 }
 
 describe('section 7 — transactional business rules with PostgreSQL', () => {
+  it('exposes a database-backed idempotentReplay flag without changing process()', async () => {
+    const wallet = await opening();
+    const command = wager(wallet, Kind.Bet);
+    const initial = await processor.processWithReplay(command);
+    const repeat = await processor.processWithReplay(command);
+    expect(initial.idempotentReplay).toBe(false);
+    expect(repeat.idempotentReplay).toBe(true);
+    expect(repeat.result).toEqual(initial.result);
+    expect(await processor.process(command)).toEqual(initial.result);
+  });
+
   it('BET debits once and replays the historical result after another movement', async () => {
     const wallet = await opening();
     const original = wager(wallet, Kind.Bet);

@@ -2,7 +2,7 @@
 
 Desafio técnico da Jungle Gaming: processamento financeiro distribuído de apostas, com foco em precisão monetária, idempotência, concorrência e recuperação após falhas.
 
-> **Estado atual:** modelo de domínio financeiro com testes unitários, migration inicial de tabelas/constraints e testes SQL em PostgreSQL. **Ainda faltam entidades de mapeamento MikroORM, casos de uso transacionais, HTTP, consumidores e publishers SQS.** O endpoint `GET /` ainda não é um health check de produção. Não confunda o endpoint `GET /` com um health check de produção.
+> **Estado atual:** domínio, regras financeiras, concorrência PostgreSQL e **API REST da seção 9** implementados com testes. O processamento HTTP confirma ledger + Outbox no mesmo commit. **Ainda faltam consumidores/publicadores SQS, autorização multi-tenant refinada, mapeamentos ORM e deploy.** Os health checks são `/health/live` e `/health/ready`, não `GET /`.
 
 ## Stack
 
@@ -136,6 +136,26 @@ bun run test:concurrency
 Consulte [ARCHITECTURE.md](ARCHITECTURE.md) para as garantias de
 ordenação, os índices utilizados e o diagnóstico de contenção.
 
+## API REST (Seção 9)
+
+O NestJS expõe `POST /wallets`, consultas de wallet e ledger com cursor
+opaco, `POST /wagering/transactions` com `Idempotency-Key` obrigatório,
+consultas por ID interno/externo, reconciliação e health checks.
+O código HTTP reutiliza `ProcessWager`: não há segunda implementação
+de saldo/idempotência.
+
+Em desenvolvimento, escolha explicitamente `HTTP_AUTH_MODE=disabled`.
+Em produção, configure um IdP OIDC RS256/JWKS; a aplicação não implementa
+senhas ou sessões próprias. `/health/*` é público.
+
+**[Guia da API, autenticação, exemplos e status HTTP](docs/HTTP_API.md)**
+
+```bash
+bun run db:migrate:up
+HTTP_AUTH_MODE=disabled bun run start:dev
+bun run test:api:e2e
+```
+
 ## Integração contínua (GitHub Actions)
 
 O workflow `.github/workflows/ci.yml` executa em **pull requests para `master` e pushes na `master`**. Ele instala as dependências via Bun, faz typecheck, lint, testes, build e valida a conexão do MikroORM em um PostgreSQL efêmero.
@@ -214,7 +234,7 @@ bun run test:load:spike
 bun run test:load:soak
 ```
 
-No `.env`, configure `K6_VUS` e `K6_DURATION`. O cenário reporta latências (incluindo p50/p95/p99), erros HTTP e checks. **A carga financeira com 50 requisições paralelas e >=3 instâncias será implementada depois.**
+No `.env`, configure `K6_VUS` e `K6_DURATION`. O cenário reporta latências (incluindo p50/p95/p99), erros HTTP e checks. **Concorrência financeira entre três processos já é testada diretamente contra PostgreSQL; carga HTTP via k6 será configurada em etapa posterior.**
 
 ## AWS / EKS / Terraform
 
@@ -224,7 +244,7 @@ A configuração para AWS está em `infra/terraform/aws`; o Deployment Kubernete
 
 ## Limitações atuais
 
-- Modelo e regras de negócio implementados, com transações PostgreSQL e Outbox persistida. **Não há API pública de wagering, integração com consumidores SQS, publisher da Outbox, mapeamentos ORM ou deploy de workers EKS**.
-- Kubernetes usa `GET /` temporariamente nas probes; substituir por `/health/live` e `/health/ready`.
+- Modelo e regras de negócio implementados, com transações PostgreSQL e Outbox persistida. **A API está implementada, mas ainda não há integração com consumidores SQS, publisher da Outbox, mapeamentos ORM, autorização de wallet por provedor ou deploy EKS**.
+- Kubernetes usa `/health/live` e `/health/ready` como probes; configurar OIDC, segredo de cursor e acesso SQS/IAM antes do deploy.
 - Terraform AWS é um exemplo de desenvolvimento com state local; não é um ambiente de produção pronto.
 - Provisionamento real e integração ponta a ponta ainda dependem de validação com Docker, Bun, Terraform e uma conta AWS.
