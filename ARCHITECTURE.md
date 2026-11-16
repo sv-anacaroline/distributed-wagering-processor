@@ -8,8 +8,7 @@ financeiras e Outbox em transações PostgreSQL. Testes unitários e de integra�
 com banco real asseguram invariantes, inclusive com três processos Bun
 independentes. Nenhum mecanismo de consistência depende de memória local.
 
-**Ainda não implementamos endpoints HTTP financeiros, consumidores SQS,
-publisher da Outbox, reconciliação de produção nem deploy EKS dos workers.**
+**A API HTTP da seção 9 já expõe consultas e comandos financeiros. Ainda não implementamos consumidores SQS, publisher da Outbox, autorização multi-tenant completa, reconciliação operacional automatizada nem deploy EKS dos workers.**
 A seção 8 valida concorrência por wallet no PostgreSQL, não a entrega em
 ordem dos eventos por SQS.
 
@@ -34,8 +33,7 @@ ordem dos eventos por SQS.
 - Wallet é aggregate root. `open()` inicia a versão em 1; `credit()` e
   `debit()` criam `WalletLedgerEntry` e incrementam a versão somente quando
   existe movimentação positiva.
-- No fluxo de abertura com saldo positivo, o **caso de uso** deverá criar
-  a transação interna `OPENING` e seu ledger de crédito na mesma SQL transaction.
+- `WalletService.create` já cria a transação `OPENING` e seu ledger `CREDIT` na mesma SQL transaction quando o saldo inicial é positivo.
 - `WalletLedgerEntry` é imutável; `create()` confere a identidade, as moedas,
   o valor positivo e a aritmética exata antes de alterar Wallet.
 - Rehidratação reconstruirá estado persistido, sem reexecutar as transições.
@@ -239,10 +237,39 @@ concorrência, não um benchmark de saturação. Medições repetidas de
 p95/p99, CPU, locks e throughput serão coletadas quando tivermos canal
 de requisições real. Nenhum cliente HTTP ou consumidor SQS foi criado.
 
+## HTTP API — Seção 9
+
+A camada `src/http/` oferece controllers NestJS para wallets, ledger,
+wagering e reconciliação, sem regras financeiras duplicadas. Todas as
+operações usam `Money` (bigint centavos) e `ProcessWager` existente
+para persistir wallet/ledger/wager/Outbox antes da resposta.
+
+Autenticação de rota usa JWT RS256 validado via JWKS externo configurável
+(IdP Keycloak/Zitadel), com issuer/audience e claim `provider_id`
+vinculado ao provider do comando. O bypass só está disponível fora
+de produção e exige `HTTP_AUTH_MODE=disabled` explícito. É necessário
+mapear ownership de wallet para autorização multi-tenant antes de
+disponibilizar endpoints a clientes externos.
+
+A paginação do ledger usa cursor HMAC assinado e keyset
+`created_at,id`; réplicas precisam compartilhar a mesma chave.
+A reconciliação usa `REPEATABLE READ` para ler wallet e ledger do
+mesmo snapshot MVCC, sem lock global; divergências são logadas e
+gravadas em `wallet_reconciliation_anomalies` (auditoria + métrica).
+`/health/ready` verifica rede/PostgreSQL e endpoint SQS; IAM e
+mensageria funcional serão checados na etapa SQS.
+
+Status HTTP diferenciam 400, 401, 403, 404, 409, 422, 202,
+503 e 500. `idempotentReplay` vem de resultado SQL com lock,
+não de inspeção do saldo ao vivo. Os E2E reais validam abertura,
+código HTTP, replay, ledger, reconciliação e disputa de saldo.
+
+Detalhes: [docs/HTTP_API.md](docs/HTTP_API.md).
+
 ## Próximos passos
 
-1. APIs HTTP para wallets/wagers, autenticação de provider e mapeamento do contrato.
+1. Autorização de acesso por wallet/tenant com vínculo ao provedor autenticado.
 2. Consumers Inbox/SQS + publisher da Outbox com retries, lease, DLQ e shutdown seguro.
-3. Abertura de wallets via caso de uso próprio e adapters ORM necessários.
+3. Adapters ORM e evolução de migrations, sem alterar o domínio financeiro.
 4. Ampliar os testes distribuídos para chaos/rede e execução em pods EKS.
-5. Reconciliação, logs/métricas e health endpoints.
+5. Reconciliação operacional recorrente, métricas externas e alertas.

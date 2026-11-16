@@ -3,6 +3,11 @@ name: distributed-wagering-processor
 x-app-env: &app-env
   NODE_ENV: development
   PORT: "3000"
+  HTTP_AUTH_MODE: ${HTTP_AUTH_MODE:-disabled}
+  OIDC_ISSUER: ${OIDC_ISSUER:-}
+  OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+  OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+  PAGINATION_CURSOR_SECRET: ${PAGINATION_CURSOR_SECRET:-local-only-not-for-production}
   DB_HOST: postgres
   DB_PORT: "5432"
   DB_NAME: ${POSTGRES_DB:-wagering}
