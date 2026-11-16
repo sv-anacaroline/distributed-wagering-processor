@@ -61,7 +61,7 @@ function domainWallet(row: WalletRow): Wallet {
   return Wallet.rehydrate({
     id: row.id, playerId: row.player_id,
     balance: Money.from({ amount: row.balance, currency: row.currency }),
-    version: row.version, createdAt: row.created_at, updatedAt: row.updated_at,
+    version: row.version, createdAt: new Date(row.created_at), updatedAt: new Date(row.updated_at),
   });
 }
 function domainWager(row: WagerRow): WagerTransaction {
@@ -76,8 +76,8 @@ function domainWager(row: WagerRow): WagerTransaction {
     ...(row.reference_transaction_id
       ? { referenceTransactionId: row.reference_transaction_id } : {}),
     ...(row.failure_code ? { failureCode: row.failure_code } : {}),
-    ...(row.processed_at ? { processedAt: row.processed_at } : {}),
-    status: row.status, createdAt: row.created_at,
+    ...(row.processed_at ? { processedAt: new Date(row.processed_at) } : {}),
+    status: row.status, createdAt: new Date(row.created_at),
   });
 }
 async function rows<T>(em: EntityManager, sql: string, values: unknown[] = []): Promise<T[]> {
@@ -93,7 +93,7 @@ async function dbNow(em: EntityManager, wallet: Wallet): Promise<Date> {
     em, 'select greatest(clock_timestamp(), ?::timestamptz) as at', [wallet.updatedAt],
   );
   if (!row) throw new InvalidDomainStateError('Database clock unavailable');
-  return row.at;
+  return new Date(row.at);
 }
 async function findExisting(em: EntityManager, cmd: WagerCommand): Promise<WagerRow | undefined> {
   const [row] = await rows<WagerRow>(em, `
@@ -272,8 +272,8 @@ export class ProcessWager {
       const tx = domainWager(row);
       const retry = nextReferenceRetry({
         attempts: row.reference_retry_attempts,
-        nextAttemptAt: row.reference_next_attempt_at,
-        expiresAt: row.reference_expires_at,
+        nextAttemptAt: new Date(row.reference_next_attempt_at),
+        expiresAt: new Date(row.reference_expires_at),
       }, at);
       if (retry.expired) {
         tx.reject(FailureCode.ReferenceNotFound);

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Money, type MoneyProps } from '../domain/money.js';
 import type { FailureCode, WagerTransaction } from '../domain/wager-transaction.js';
-import { WagerTransactionKind, WagerTransactionStatus } from '../domain/wager-transaction.js';
+import type { WagerTransactionKind, WagerTransactionStatus } from '../domain/wager-transaction.js';
 import type { Wallet } from '../domain/wallet.js';
 
 export interface WagerCommand {
