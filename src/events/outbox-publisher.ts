@@ -13,7 +13,7 @@ export interface ClaimedEvent {
   readonly attempts: number;
   readonly claimToken: string;
 }
-interface RawEvent extends Omit<ClaimedEvent, 'claimToken'> {}
+type RawEvent = Omit<ClaimedEvent, 'claimToken'>;
 export interface PublishCycle {
   readonly claimed: number;
   readonly published: number;
