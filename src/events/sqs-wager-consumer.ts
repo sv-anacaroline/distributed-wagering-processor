@@ -124,7 +124,20 @@ export class SqsWagerConsumer {
     }), { ...(signal ? { abortSignal: signal } : {}) });
     const messages = received.Messages ?? [];
     // All operations settle before the next batch; no unobserved promises on shutdown.
-    return Promise.all(messages.map(message => this.processOne(message, signal)));
+    const settled = await Promise.allSettled(
+      messages.map(message => this.processOne(message, signal)),
+    );
+    const failures = settled.filter((item) => item.status === 'rejected');
+    if (failures.length) {
+      throw new AggregateError(
+        failures.map((item) => item.reason),
+        'One or more SQS messages could not be acknowledged or dead-lettered',
+      );
+    }
+    return settled.map((item) => {
+      if (item.status !== 'fulfilled') throw new Error('Unreachable SQS settlement');
+      return item.value;
+    });
   }
 
   async run(signal: AbortSignal): Promise<void> {

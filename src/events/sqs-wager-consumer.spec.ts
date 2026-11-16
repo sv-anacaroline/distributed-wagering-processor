@@ -120,6 +120,26 @@ describe('SQS wager worker delivery policy', () => {
     expect(sent[0]).toBeInstanceOf(ReceiveMessageCommand);
     expect(sent.filter(cmd => cmd instanceof DeleteMessageCommand)).toHaveLength(2);
   });
+  it('waits for every delivery to settle before reporting a batch failure', async () => {
+    let completed = false;
+    const source = [message('invalid-body'), message(payload())];
+    const sqs = { send: (cmd: SentCommand): Promise<unknown> => {
+      if (cmd instanceof ReceiveMessageCommand) return Promise.resolve({ Messages: source });
+      if (cmd instanceof SendMessageCommand) return Promise.reject(new Error('DLQ down'));
+      return Promise.resolve({});
+    } };
+    const worker = new SqsWagerConsumer(sqs as never, queues, {
+      processFromInbox: async () => {
+        await Promise.resolve();
+        completed = true;
+        return {} as never;
+      },
+    });
+    let failed: unknown;
+    try { await worker.runOnce(); } catch (e: unknown) { failed = e; }
+    expect(failed).toBeInstanceOf(AggregateError);
+    expect(completed).toBe(true);
+  });
   it('distinguishes permanent domain messages from transient outages', () => {
     expect(isPermanentWagerError(new InvalidSqsMessageError('bad'))).toBe(true);
     expect(isPermanentWagerError(new Error('network'))).toBe(false);
