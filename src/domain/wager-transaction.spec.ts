@@ -210,6 +210,27 @@ describe('WagerTransaction', () => {
     ).toThrow(InvalidReferenceError);
   });
 
+  it('defines distinct machine-readable failure codes for references', () => {
+    expect(String(FailureCode.ReferenceNotFound)).toBe('REFERENCE_NOT_FOUND');
+    expect(String(FailureCode.ReferenceNotProcessed)).toBe('REFERENCE_NOT_PROCESSED');
+    expect(String(FailureCode.ReferenceAmountMismatch)).toBe('REFERENCE_AMOUNT_MISMATCH');
+    expect(String(FailureCode.ReversalInsufficientFunds)).toBe('REVERSAL_INSUFFICIENT_FUNDS');
+  });
+
+  it('rejects references for a different game even within the same round', () => {
+    const bet = processedBet();
+    expect(() =>
+      referring(Kind.Refund).ledgerDirectionFor(
+        WagerTransaction.rehydrate({
+          ...props(Kind.Bet),
+          status: Status.Processed,
+          gameId: 'other-game',
+        }),
+      ),
+    ).toThrow(InvalidReferenceError);
+    expect(bet.status).toBe(Status.Processed);
+  });
+
   it('rehydrates terminal data without replaying transitions and copies dates', () => {
     const original = at();
     const tx = WagerTransaction.rehydrate({

@@ -66,8 +66,10 @@ garantia ponta a ponta antes delas.
 - ROLLBACK de uma BET gera crédito; de WIN/REFUND gera débito. Se uma reversão
   debitadora não tiver saldo, o caso de uso a rejeitará com
   `REVERSAL_INSUFFICIENT_FUNDS`, diferente de `INSUFFICIENT_FUNDS` para BET.
-- Uma referência admite no máximo uma reversão por tipo; o índice parcial
-  SQL garante essa unicidade.
+- Uma BET admite uma única compensação ativa entre REFUND e ROLLBACK,
+  mesmo sendo tipos diferentes. O índice parcial SQL reserva a referência
+  somente nos estados PENDING/PENDING_REFERENCE/PROCESSED; rejeições não
+  bloqueiam novas tentativas corrigidas.
 - `matchesPayload` compara o hash persistido, mas a canonicalização JSON e
   armazenamento de resposta histórica para idempotência ficam no caso de uso.
 
@@ -124,13 +126,28 @@ A CI cria a base, aplica a migration, roda testes, testa o rollback e reaplica
 somente no ambiente descartável. O rollback desta migration **apaga tabelas e
 dados**: não executar como solução automática para reversões financeiras.
 
+## Regras de negócio — Seção 7 (implementadas)
+
+A implementação é documentada em [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md).
+O processador `ProcessWager` utiliza `em.fork().transactional`,
+`FOR UPDATE` da wallet e IDs externos de provedor para referências; a Outbox
+é inserida na mesma transação que status, saldo e ledger. O hash canônico
+SHA-256 e a resposta histórica são persistidos para replays.
+
+A segunda migration `Migration20261116213000.ts` adiciona agendamento de
+referência (`attempts`, `nextAttemptAt`, `expiresAt`), unicidade de reversão
+ativa entre tipos e validação SQL de referências resolvidas. O worker
+`ReferenceRetryWorker` reprocessa pendências persistidas a cada intervalo
+sem depender de SQS. `wallet.version` registra apenas mudanças de saldo.
+
+**Ainda não há endpoints, consumidores/publishers SQS, execução EKS do worker
+ou fluxo de abertura de wallet pela API.**
+
 ## Próximos passos
 
-1. Entidades MikroORM e repositórios de persistência (usando exatamente este
-   schema, sem `schema:update` arbitrário).
-2. Caso de uso financeiro transacional, locks por wallet, abertura, idempotência
-   com resposta histórica, rollback/refund, publicação transacional de eventos.
-3. Workers Inbox/SQS + Outbox com retries, lease, DLQ e shutdown seguro.
+1. APIs HTTP para wallets/wagers, autenticação de provider e mapeamento do contrato.
+2. Consumers Inbox/SQS + publisher da Outbox com retries, lease, DLQ e shutdown seguro.
+3. Abertura de wallets via caso de uso próprio e adapters ORM necessários.
 4. Testes reais de atomicidade/races com >=3 instâncias, 50 requisições
    idênticas e duas BET de 80.00 contra saldo 100.00.
 5. Reconciliação, logs/métricas e health endpoints.

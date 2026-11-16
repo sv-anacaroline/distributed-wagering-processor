@@ -31,6 +31,8 @@ export enum FailureCode {
   CurrencyMismatch = 'CURRENCY_MISMATCH',
   InvalidReference = 'INVALID_REFERENCE',
   ReferenceNotFound = 'REFERENCE_NOT_FOUND',
+  ReferenceNotProcessed = 'REFERENCE_NOT_PROCESSED',
+  ReferenceAmountMismatch = 'REFERENCE_AMOUNT_MISMATCH',
   AlreadyReversed = 'ALREADY_REVERSED',
   IdempotencyConflict = 'IDEMPOTENCY_CONFLICT',
   PermanentInfrastructureError = 'PERMANENT_INFRASTRUCTURE_ERROR',
@@ -323,6 +325,7 @@ export class WagerTransaction {
       reference.playerId !== this.playerId ||
       reference.walletId !== this.walletId ||
       reference.roundId !== this.roundId ||
+      reference.gameId !== this.gameId ||
       reference.money.currency !== this.money.currency ||
       !kinds.includes(reference.kind)
     ) {

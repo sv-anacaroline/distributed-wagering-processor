@@ -103,6 +103,25 @@ restrições de reversão, schema SQL e limites desta etapa.
 O teste de schema usa PostgreSQL real no CI (`bun run test:e2e`) e valida
 unicidade, trigger de ledger append-only, saldos e versão de carteira.
 
+## Regras de negócio — Seção 7
+
+O caso de uso `src/application/process-wager.ts` aplica BET, WIN, LOSS, REFUND e
+ROLLBACK usando lock de linha por wallet e PostgreSQL transacional. As entradas
+são independentes de API e SQS; o processador poderá ser chamado por ambos.
+Resultados idempotentes usam o saldo e a versão persistidos no instante da
+operação original. Referências fora de ordem usam scheduler durável com TTL de
+24 horas e backoff exponencial.
+
+```bash
+bun run db:migrate:up
+bun run worker:references
+# Alternativa Compose (perfil opcional):
+docker compose --profile reference-worker up -d reference-retry-worker
+```
+
+Consulte [docs/BUSINESS_RULES.md](docs/BUSINESS_RULES.md) para o comportamento
+de cada operação, códigos de falha, reversões cruzadas e testes.
+
 ## Integração contínua (GitHub Actions)
 
 O workflow `.github/workflows/ci.yml` executa em **pull requests para `master` e pushes na `master`**. Ele instala as dependências via Bun, faz typecheck, lint, testes, build e valida a conexão do MikroORM em um PostgreSQL efêmero.
@@ -191,7 +210,7 @@ A configuração para AWS está em `infra/terraform/aws`; o Deployment Kubernete
 
 ## Limitações atuais
 
-- Modelo de domínio e migration SQL inicial implementados, com testes unitários e de constraints. **Não há casos de uso financeiros, mapeamentos ORM, inbox/outbox persistidos em execução nem consumo efetivo de SQS**.
+- Modelo e regras de negócio implementados, com transações PostgreSQL e Outbox persistida. **Não há API pública de wagering, integração com consumidores SQS, publisher da Outbox, mapeamentos ORM ou deploy de workers EKS**.
 - Kubernetes usa `GET /` temporariamente nas probes; substituir por `/health/live` e `/health/ready`.
 - Terraform AWS é um exemplo de desenvolvimento com state local; não é um ambiente de produção pronto.
 - Provisionamento real e integração ponta a ponta ainda dependem de validação com Docker, Bun, Terraform e uma conta AWS.
