@@ -94,13 +94,17 @@ describe('PostgreSQL financial invariants (actual database)', () => {
   it('rejects a balance write without ledger, lost-version update and currency mutation', async () => {
     const { walletId } = await createOpeningWallet();
     await expectSqlFailure(`update wallets set balance = 99.00 where id = '${walletId}'`);
-    await expectSqlFailure(`update wallets set balance = 99.00, version = 2 where id = '${walletId}'`);
+    await expectSqlFailure(
+      `update wallets set balance = 99.00, version = 2 where id = '${walletId}'`,
+    );
     await expectSqlFailure(`update wallets set currency = 'USD' where id = '${walletId}'`);
   });
 
   it('enforces append-only ledger against UPDATE and DELETE', async () => {
     const { walletId } = await createOpeningWallet();
-    await expectSqlFailure(`update wallet_ledger_entries set amount = 2.00 where wallet_id = '${walletId}'`);
+    await expectSqlFailure(
+      `update wallet_ledger_entries set amount = 2.00 where wallet_id = '${walletId}'`,
+    );
     await expectSqlFailure(`delete from wallet_ledger_entries where wallet_id = '${walletId}'`);
   });
 
@@ -117,7 +121,9 @@ describe('PostgreSQL financial invariants (actual database)', () => {
           'PENDING', now(), null
         )
       `);
-    await expectSqlFailure(`update wager_transactions set status = 'REJECTED', failure_code = 'TEST', processed_at = null where id = '${transactionId}'`);
+    await expectSqlFailure(
+      `update wager_transactions set status = 'REJECTED', failure_code = 'TEST', processed_at = null where id = '${transactionId}'`,
+    );
   });
 
   it('enforces inbox uniqueness without in-memory deduplication', async () => {
@@ -133,12 +139,19 @@ describe('PostgreSQL financial invariants (actual database)', () => {
     const { walletId } = await createOpeningWallet();
     const eventId = randomUUID();
     const payload = JSON.stringify({
-      eventId, aggregateId: walletId, eventType: 'WalletBalanceChanged',
-      correlationId: 'command1', occurredAt: new Date().toISOString(), version: 1, data: {},
+      eventId,
+      aggregateId: walletId,
+      eventType: 'WalletBalanceChanged',
+      correlationId: 'command1',
+      occurredAt: new Date().toISOString(),
+      version: 1,
+      data: {},
     });
     await sql(`insert into outbox_messages(id, aggregate_id, event_type, payload, occurred_at)
       values ('${eventId}', '${walletId}', 'WalletBalanceChanged', '${payload}'::jsonb, now())`);
-    await expectSqlFailure(`update outbox_messages set payload = '{}'::jsonb where id = '${eventId}'`);
+    await expectSqlFailure(
+      `update outbox_messages set payload = '{}'::jsonb where id = '${eventId}'`,
+    );
     await sql(`update outbox_messages set attempts = 1 where id = '${eventId}'`);
     await expectSqlFailure(`update outbox_messages set attempts = 0 where id = '${eventId}'`);
   });

@@ -71,8 +71,12 @@ export class Migration20261116200000 extends Migration {
       on wager_transactions(provider_id, reference_external_transaction_id, kind)
       where kind in ('REFUND', 'ROLLBACK')
     `);
-    this.addSql(`create index wager_pending_reference_idx on wager_transactions(status, created_at) where status = 'PENDING_REFERENCE'`);
-    this.addSql(`create index wager_wallet_created_idx on wager_transactions(wallet_id, created_at, id)`);
+    this.addSql(
+      `create index wager_pending_reference_idx on wager_transactions(status, created_at) where status = 'PENDING_REFERENCE'`,
+    );
+    this.addSql(
+      `create index wager_wallet_created_idx on wager_transactions(wallet_id, created_at, id)`,
+    );
 
     this.addSql(`
       create table wallet_ledger_entries (
@@ -99,7 +103,9 @@ export class Migration20261116200000 extends Migration {
         )
       )
     `);
-    this.addSql(`create index ledger_wallet_page_idx on wallet_ledger_entries(wallet_id, created_at, id)`);
+    this.addSql(
+      `create index ledger_wallet_page_idx on wallet_ledger_entries(wallet_id, created_at, id)`,
+    );
 
     this.addSql(`
       create table inbox_messages (
