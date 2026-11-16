@@ -110,7 +110,7 @@ async function rows<T>(em: EntityManager, sql: string, values: unknown[] = []): 
   return em.execute<T[]>(sql, values, 'all');
 }
 async function lockWallet(em: EntityManager, walletId: string): Promise<Wallet> {
-  const [row] = await rows<WalletRow>(em, 'select * from wallets where id=? for update', [
+  const [row] = await rows<WalletRow>(em, 'select * from wallets where id=? for no key update', [
     walletId,
   ]);
   if (!row) throw new InvalidDomainStateError('Wallet not found');
