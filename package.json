@@ -19,7 +19,7 @@
     "test:watch": "bun test --watch ./src",
     "test:cov": "bun test --coverage ./src",
     "test:e2e": "bun test ./test",
-    "test:load": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm k6",
+    "test:load": "bun run test:load:smoke",
     "db:debug": "bunx --bun mikro-orm debug --config ./src/mikro-orm.config.ts",
     "db:migrate:create": "bunx --bun mikro-orm migration:create --config ./src/mikro-orm.config.ts",
     "db:migrate:up": "bunx --bun mikro-orm migration:up --config ./src/mikro-orm.config.ts",
@@ -30,7 +30,12 @@
     "db:migrate:check": "bunx --bun mikro-orm migration:check --config ./src/mikro-orm.config.ts",
     "lint:fix": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"performance/**/*.js\" --fix",
     "lint:quick": "oxlint src/ test/ performance/",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"performance/**/*.js\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"performance/**/*.js\"",
+    "test:load:smoke": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=smoke k6 run /scripts/scenarios/smoke.js",
+    "test:load:load": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=load k6 run /scripts/scenarios/load.js",
+    "test:load:stress": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=stress k6 run /scripts/scenarios/stress.js",
+    "test:load:spike": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=spike k6 run /scripts/scenarios/spike.js",
+    "test:load:soak": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=soak k6 run /scripts/scenarios/soak.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",

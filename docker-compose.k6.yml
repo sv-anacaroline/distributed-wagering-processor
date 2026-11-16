@@ -4,12 +4,18 @@ services:
     profiles: [performance]
     volumes:
       - ./performance:/scripts:ro
+      - ./performance/results:/results
     environment:
-      BASE_URL: http://api:3000
+      BASE_URL: ${K6_BASE_URL:-http://api:3000}
       K6_VUS: ${K6_VUS:-5}
       K6_DURATION: ${K6_DURATION:-15s}
+      K6_STAGE_DURATION: ${K6_STAGE_DURATION:-30s}
+      K6_SOAK_DURATION: ${K6_SOAK_DURATION:-10m}
+      K6_P95_MS: ${K6_P95_MS:-}
+      K6_ENVIRONMENT: ${K6_ENVIRONMENT:-local}
+      K6_SCENARIO: ${K6_SCENARIO:-smoke}
     entrypoint: ["k6"]
-    command: ["run", "/scripts/smoke.js"]
+    command: ["run", "/scripts/scenarios/smoke.js"]
     depends_on:
       api:
         condition: service_started
