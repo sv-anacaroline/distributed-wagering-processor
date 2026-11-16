@@ -3,8 +3,12 @@ import { MikroORM } from '@mikro-orm/postgresql';
 import config from '../src/mikro-orm.config.js';
 
 let orm: MikroORM;
-beforeAll(async () => { orm = await MikroORM.init(config); });
-afterAll(async () => { await orm.close(true); });
+beforeAll(async () => {
+  orm = await MikroORM.init(config);
+});
+afterAll(async () => {
+  await orm.close(true);
+});
 
 describe('PostgreSQL concurrency indexes and write-amplification settings', () => {
   it('reserves page space for repeated HOT wallet balance updates', async () => {
@@ -21,7 +25,7 @@ describe('PostgreSQL concurrency indexes and write-amplification settings', () =
          'wallets', 'wager_transactions', 'wallet_ledger_entries', 'outbox_messages'
        )`,
     );
-    const indexNames = new Set(rows.map(row => row.indexname));
+    const indexNames = new Set(rows.map((row) => row.indexname));
     for (const required of [
       'wallets_pkey',
       'wager_transactions_idempotency_key_key',

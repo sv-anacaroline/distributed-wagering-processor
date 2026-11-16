@@ -10,10 +10,13 @@ type WireReply =
 
 export class WagerChild {
   private readonly child: ChildProcessWithoutNullStreams;
-  private readonly pending = new Map<string, {
-    readonly resolve: (result: WagerResult | null) => void;
-    readonly reject: (error: Error) => void;
-  }>();
+  private readonly pending = new Map<
+    string,
+    {
+      readonly resolve: (result: WagerResult | null) => void;
+      readonly reject: (error: Error) => void;
+    }
+  >();
   private readonly startup: Promise<void>;
   private readyResolve: (() => void) | undefined;
   private readyReject: ((error: Error) => void) | undefined;
@@ -29,7 +32,9 @@ export class WagerChild {
       env: { ...process.env, NODE_ENV: 'test' },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    this.child.stderr.on('data', (data: Buffer) => { this.stderr += data.toString(); });
+    this.child.stderr.on('data', (data: Buffer) => {
+      this.stderr += data.toString();
+    });
     createInterface({ input: this.child.stdout }).on('line', (line) => {
       const reply = JSON.parse(line) as WireReply;
       if ('action' in reply) {
@@ -43,9 +48,9 @@ export class WagerChild {
       else waiting.reject(new Error(`${reply.code ?? 'WORKER_ERROR'}: ${reply.message}`));
     });
     this.child.on('error', (error: Error) => this.fail(error));
-    this.child.on('exit', (code) => this.fail(new Error(
-      `Bun child exited with code ${code}: ${this.stderr}`,
-    )));
+    this.child.on('exit', (code) =>
+      this.fail(new Error(`Bun child exited with code ${code}: ${this.stderr}`)),
+    );
   }
 
   private fail(error: Error): void {
@@ -79,7 +84,7 @@ export class WagerChild {
   }
 
   async stop(): Promise<void> {
-    const exited = new Promise<number | null>(resolve => {
+    const exited = new Promise<number | null>((resolve) => {
       this.child.once('exit', resolve);
     });
     this.child.stdin.end();

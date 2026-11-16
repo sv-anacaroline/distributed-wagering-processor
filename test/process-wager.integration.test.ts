@@ -282,10 +282,12 @@ describe('section 7 — transactional business rules with PostgreSQL', () => {
       conflict = error;
     }
     expect(conflict).toBeInstanceOf(IdempotencyConflictError);
-    expect(await count(
-      'select count(*)::text as count from wager_transactions where wallet_id=?::uuid and kind=?',
-      [wallet.walletId, Kind.Loss],
-    )).toBe(2);
+    expect(
+      await count(
+        'select count(*)::text as count from wager_transactions where wallet_id=?::uuid and kind=?',
+        [wallet.walletId, Kind.Loss],
+      ),
+    ).toBe(2);
   });
 
   it('serializes fifty duplicate BET requests into one ledger entry', async () => {

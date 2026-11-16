@@ -4,8 +4,12 @@ import { MikroORM } from '@mikro-orm/postgresql';
 import config from '../src/mikro-orm.config.js';
 
 let orm: MikroORM;
-beforeAll(async () => { orm = await MikroORM.init(config); });
-afterAll(async () => { await orm.close(true); });
+beforeAll(async () => {
+  orm = await MikroORM.init(config);
+});
+afterAll(async () => {
+  await orm.close(true);
+});
 
 async function newWallet(): Promise<string> {
   const id = randomUUID();
@@ -22,16 +26,20 @@ describe('PostgreSQL wallet row lock scope', () => {
     const id = await newWallet();
     let acquired!: () => void;
     let release!: () => void;
-    const locked = new Promise<void>(resolve => { acquired = resolve; });
-    const waiting = new Promise<void>(resolve => { release = resolve; });
-    const holding = orm.em.fork().transactional(async em => {
+    const locked = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holding = orm.em.fork().transactional(async (em) => {
       await em.execute('select id from wallets where id=?::uuid for no key update', [id]);
       acquired();
       await waiting;
     });
     await locked;
     try {
-      await orm.em.fork().transactional(async em => {
+      await orm.em.fork().transactional(async (em) => {
         await em.execute('select id from wallets where id=?::uuid for key share nowait', [id]);
       });
     } finally {
@@ -44,9 +52,13 @@ describe('PostgreSQL wallet row lock scope', () => {
     const id = await newWallet();
     let acquired!: () => void;
     let release!: () => void;
-    const locked = new Promise<void>(resolve => { acquired = resolve; });
-    const waiting = new Promise<void>(resolve => { release = resolve; });
-    const holding = orm.em.fork().transactional(async em => {
+    const locked = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holding = orm.em.fork().transactional(async (em) => {
       await em.execute('select id from wallets where id=?::uuid for no key update', [id]);
       acquired();
       await waiting;
@@ -54,7 +66,7 @@ describe('PostgreSQL wallet row lock scope', () => {
     await locked;
     let failure: unknown;
     try {
-      await orm.em.fork().transactional(async em => {
+      await orm.em.fork().transactional(async (em) => {
         await em.execute('select id from wallets where id=?::uuid for no key update nowait', [id]);
       });
     } catch (error: unknown) {
@@ -69,9 +81,9 @@ describe('PostgreSQL wallet row lock scope', () => {
   it('allows locking different wallets with no mutual exclusion', async () => {
     const a = await newWallet();
     const b = await newWallet();
-    await orm.em.fork().transactional(async em => {
+    await orm.em.fork().transactional(async (em) => {
       await em.execute('select id from wallets where id=?::uuid for no key update', [a]);
-      await orm.em.fork().transactional(async independent => {
+      await orm.em.fork().transactional(async (independent) => {
         await independent.execute(
           'select id from wallets where id=?::uuid for no key update nowait',
           [b],

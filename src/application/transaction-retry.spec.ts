@@ -33,7 +33,10 @@ describe('transaction retries', () => {
     let waits = 0;
     const result = await withTransactionRetry(
       () => Promise.resolve('committed'),
-      () => { waits++; return Promise.resolve(); },
+      () => {
+        waits++;
+        return Promise.resolve();
+      },
     );
     expect(result).toBe('committed');
     expect(waits).toBe(0);
@@ -48,7 +51,10 @@ describe('transaction retries', () => {
         if (calls === 1) return Promise.reject(sqlError('40P01'));
         return Promise.resolve('committed');
       },
-      ms => { delays.push(ms); return Promise.resolve(); },
+      (ms) => {
+        delays.push(ms);
+        return Promise.resolve();
+      },
       () => 0,
     );
     expect(result).toBe('committed');
@@ -60,11 +66,19 @@ describe('transaction retries', () => {
     let calls = 0;
     const delays: number[] = [];
     const failure = sqlError('40001');
-    const caught = await rejected(() => withTransactionRetry(
-      () => { calls++; return Promise.reject(failure); },
-      ms => { delays.push(ms); return Promise.resolve(); },
-      () => 0,
-    ));
+    const caught = await rejected(() =>
+      withTransactionRetry(
+        () => {
+          calls++;
+          return Promise.reject(failure);
+        },
+        (ms) => {
+          delays.push(ms);
+          return Promise.resolve();
+        },
+        () => 0,
+      ),
+    );
     expect(caught).toBe(failure);
     expect(calls).toBe(3);
     expect(delays).toEqual([10, 20]);
@@ -73,9 +87,12 @@ describe('transaction retries', () => {
   it('never retries uniqueness or business errors', async () => {
     for (const error of [sqlError('23505'), new InsufficientFundsError()]) {
       let calls = 0;
-      const caught = await rejected(() => withTransactionRetry(
-        () => { calls++; return Promise.reject(error); },
-      ));
+      const caught = await rejected(() =>
+        withTransactionRetry(() => {
+          calls++;
+          return Promise.reject(error);
+        }),
+      );
       expect(caught).toBe(error);
       expect(calls).toBe(1);
     }
@@ -95,8 +112,18 @@ describe('transaction retries', () => {
     let calls = 0;
     const delays: number[] = [];
     await withTransactionRetry(
-      () => { calls++; return calls < 3 ? Promise.reject(Object.assign(new Error('wrapped DB error'), { cause: sqlError('55P03') })) : Promise.resolve(); },
-      ms => { delays.push(ms); return Promise.resolve(); },
+      () => {
+        calls++;
+        return calls < 3
+          ? Promise.reject(
+              Object.assign(new Error('wrapped DB error'), { cause: sqlError('55P03') }),
+            )
+          : Promise.resolve();
+      },
+      (ms) => {
+        delays.push(ms);
+        return Promise.resolve();
+      },
       () => 5,
     );
     expect(calls).toBe(3);

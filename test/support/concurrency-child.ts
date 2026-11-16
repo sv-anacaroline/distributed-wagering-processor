@@ -6,7 +6,12 @@ import type { WagerCommand } from '../../src/application/wager-contracts.js';
 
 type Request =
   | { readonly id: string; readonly action: 'process'; readonly command: WagerCommand }
-  | { readonly id: string; readonly action: 'retry'; readonly transactionId: string; readonly walletId: string };
+  | {
+      readonly id: string;
+      readonly action: 'retry';
+      readonly transactionId: string;
+      readonly walletId: string;
+    };
 
 async function main(): Promise<void> {
   const orm = await MikroORM.init({ ...config, pool: { min: 0, max: 4 } });
@@ -19,16 +24,22 @@ async function main(): Promise<void> {
       const request = JSON.parse(line) as Request;
       const task = (async (): Promise<void> => {
         try {
-          const result = request.action === 'process'
-            ? await processor.process(request.command)
-            : await processor.retryPending(request.transactionId, request.walletId);
+          const result =
+            request.action === 'process'
+              ? await processor.process(request.command)
+              : await processor.retryPending(request.transactionId, request.walletId);
           process.stdout.write(JSON.stringify({ id: request.id, ok: true, result }) + '\n');
         } catch (error: unknown) {
           const ex = error instanceof Error ? error : new Error(String(error));
           const code = 'code' in ex && typeof ex.code === 'string' ? ex.code : undefined;
-          process.stdout.write(JSON.stringify({
-            id: request.id, ok: false, message: ex.message, code,
-          }) + '\n');
+          process.stdout.write(
+            JSON.stringify({
+              id: request.id,
+              ok: false,
+              message: ex.message,
+              code,
+            }) + '\n',
+          );
         }
       })();
       pending.add(task);

@@ -232,7 +232,6 @@ describe('applyWagerRules', () => {
   });
 });
 
-
 describe('financial invariants — table-driven and reversible sequences', () => {
   it('enforces exact-balance and one-cent boundary cases without rounding', () => {
     const cases: Array<{
@@ -269,7 +268,10 @@ describe('financial invariants — table-driven and reversible sequences', () =>
     for (const amount of ['0.01', '0.10', '25.00', '80.00', '100.00']) {
       const w = wallet();
       const debit = applied(w, tx(Kind.Bet, { id: 'bet', amount }));
-      const credit = applied(w, tx(Kind.Win, { id: 'win', externalTransactionId: 'win-ext', amount }));
+      const credit = applied(
+        w,
+        tx(Kind.Win, { id: 'win', externalTransactionId: 'win-ext', amount }),
+      );
       expect(debit.ledgerEntry?.isBalanced()).toBe(true);
       expect(credit.ledgerEntry?.isBalanced()).toBe(true);
       if (!debit.ledgerEntry || !credit.ledgerEntry) throw new Error('Missing ledger movement');

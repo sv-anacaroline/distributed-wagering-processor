@@ -10,7 +10,10 @@ import {
 } from '../src/domain/wager-transaction.js';
 import { WagerChild } from './support/wager-child.js';
 
-interface WalletFixture { readonly walletId: string; readonly playerId: string }
+interface WalletFixture {
+  readonly walletId: string;
+  readonly playerId: string;
+}
 let orm: MikroORM;
 let workers: WagerChild[];
 
@@ -19,7 +22,7 @@ beforeAll(async () => {
   workers = await Promise.all([WagerChild.start(), WagerChild.start(), WagerChild.start()]);
 });
 afterAll(async () => {
-  await Promise.all(workers.map(worker => worker.stop()));
+  await Promise.all(workers.map((worker) => worker.stop()));
   await orm.close(true);
 });
 
@@ -117,9 +120,9 @@ describe('section 8 — independent Bun processes, shared PostgreSQL', () => {
       workers[2]!.process(wager(w, Kind.Loss)),
     ]);
     const bets = [first, second];
-    expect(bets.filter(x => x.status === Status.Processed)).toHaveLength(1);
-    expect(bets.filter(x => x.status === Status.Rejected)).toHaveLength(1);
-    expect(bets.find(x => x.status === Status.Rejected)?.failureCode).toBe(
+    expect(bets.filter((x) => x.status === Status.Processed)).toHaveLength(1);
+    expect(bets.filter((x) => x.status === Status.Rejected)).toHaveLength(1);
+    expect(bets.find((x) => x.status === Status.Rejected)?.failureCode).toBe(
       FailureCode.InsufficientFunds,
     );
     expect(loss.status).toBe(Status.Processed);
@@ -131,9 +134,9 @@ describe('section 8 — independent Bun processes, shared PostgreSQL', () => {
   it('deduplicates 50 identical BETs spread across three independent processes', async () => {
     const w = await openWallet();
     const command = wager(w, Kind.Bet);
-    const responses = await Promise.all(Array.from({ length: 50 }, (_, i) =>
-      workers[i % workers.length]!.process(command),
-    ));
+    const responses = await Promise.all(
+      Array.from({ length: 50 }, (_, i) => workers[i % workers.length]!.process(command)),
+    );
     const original = responses[0];
     if (!original) throw new Error('No response from workers');
     for (const response of responses) expect(response).toEqual(original);
@@ -152,9 +155,13 @@ describe('section 8 — independent Bun processes, shared PostgreSQL', () => {
     const c = await openWallet();
     let acquired!: () => void;
     let release!: () => void;
-    const locked = new Promise<void>(resolve => { acquired = resolve; });
-    const unlocked = new Promise<void>(resolve => { release = resolve; });
-    const holding = orm.em.fork().transactional(async em => {
+    const locked = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    const unlocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holding = orm.em.fork().transactional(async (em) => {
       await em.execute('select id from wallets where id=?::uuid for update', [a.walletId]);
       acquired();
       await unlocked;
@@ -200,15 +207,15 @@ describe('section 8 — independent Bun processes, shared PostgreSQL', () => {
       'update wager_transactions set reference_next_attempt_at=clock_timestamp() where id=?::uuid',
       [pending.transactionId],
     );
-    const results = await Promise.all(workers.map(worker =>
-      worker.retry(pending.transactionId, w.walletId),
-    ));
-    expect(results.filter(result => result?.status === Status.Processed)).toHaveLength(1);
-    expect(results.filter(result => result === null)).toHaveLength(2);
+    const results = await Promise.all(
+      workers.map((worker) => worker.retry(pending.transactionId, w.walletId)),
+    );
+    expect(results.filter((result) => result?.status === Status.Processed)).toHaveLength(1);
+    expect(results.filter((result) => result === null)).toHaveLength(2);
     expect(await state(w.walletId)).toEqual({ balance: '100.00', version: 3 });
     expect(await ledgerDebits(w.walletId)).toBe(1);
     expect(await countOutbox(w.walletId)).toBe(5);
-    const applied = results.find(result => result?.status === Status.Processed);
+    const applied = results.find((result) => result?.status === Status.Processed);
     if (!applied) throw new Error('Expected the pending refund to be applied');
     expect(await workers[2]!.process(refund)).toEqual(applied);
   }, 60_000);
