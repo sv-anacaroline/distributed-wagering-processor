@@ -85,10 +85,28 @@ jobs:
       - name: Inspect pending migrations
         run: bun run db:migrate:pending
 
+  k6-config:
+    name: Validate k6 scenario configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Validate Docker Compose configuration
+        run: docker compose -f docker-compose.yml -f docker-compose.k6.yml config --quiet
+      - name: Inspect all k6 scenarios without generating traffic
+        run: |
+          for scenario in smoke load stress spike soak; do
+            docker run --rm \
+              -v "$PWD/performance:/scripts:ro" \
+              -e "K6_SCENARIO=$scenario" \
+              grafana/k6:1.8.2 inspect "/scripts/scenarios/$scenario.js" > /dev/null
+          done
+
   deploy-preview:
     name: Simulate AWS deployment (no changes)
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: [lint-and-types, quality]
+    needs: [lint-and-types, quality, k6-config]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
