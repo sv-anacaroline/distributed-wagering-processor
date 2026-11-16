@@ -18,7 +18,9 @@ export class WagerTransactionPendingReference extends IntegrationEvent<WagerTran
       transaction.status !== WagerTransactionStatus.PendingReference ||
       !transaction.referenceExternalTransactionId
     ) {
-      throw new InvalidTransactionStateError('Only PENDING_REFERENCE transactions produce reference events');
+      throw new InvalidTransactionStateError(
+        'Only PENDING_REFERENCE transactions produce reference events',
+      );
     }
     return new WagerTransactionPendingReference({
       eventId: ctx.eventId,

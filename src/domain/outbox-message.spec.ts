@@ -5,18 +5,28 @@ import { OutboxMessage } from './outbox-message.js';
 import { WagerTransaction, WagerTransactionKind } from './wager-transaction.js';
 import { WagerTransactionProcessed } from './wager-transaction-processed.js';
 
-const date = (day: number): Date => new Date(`2026-01-${day.toString().padStart(2, '0')}T00:00:00.000Z`);
+const date = (day: number): Date =>
+  new Date(`2026-01-${day.toString().padStart(2, '0')}T00:00:00.000Z`);
 const message = (): OutboxMessage => {
   const transaction = WagerTransaction.create({
-    id: 't1', providerId: 'p1', externalTransactionId: 'ext1',
-    idempotencyKey: 'key1', payloadHash: 'hash1',
-    walletId: 'w1', playerId: 'player1', roundId: 'round1', gameId: 'g1',
-    kind: WagerTransactionKind.Bet, money: Money.from({ amount: '25.00', currency: 'BRL' }),
+    id: 't1',
+    providerId: 'p1',
+    externalTransactionId: 'ext1',
+    idempotencyKey: 'key1',
+    payloadHash: 'hash1',
+    walletId: 'w1',
+    playerId: 'player1',
+    roundId: 'round1',
+    gameId: 'g1',
+    kind: WagerTransactionKind.Bet,
+    money: Money.from({ amount: '25.00', currency: 'BRL' }),
     createdAt: date(1),
   });
   transaction.markProcessed(undefined, date(1));
   const event = WagerTransactionProcessed.from(transaction, {
-    eventId: 'event1', correlationId: 'req1', at: date(1),
+    eventId: 'event1',
+    correlationId: 'req1',
+    at: date(1),
   });
   return OutboxMessage.enqueue(event);
 };
@@ -63,9 +73,13 @@ describe('OutboxMessage', () => {
 
   it('validates chronological dates before mutating', () => {
     const outbox = message();
-    expect(() => outbox.markPublished(new Date('2025-01-01T00:00:00.000Z'))).toThrow(InvalidDomainStateError);
+    expect(() => outbox.markPublished(new Date('2025-01-01T00:00:00.000Z'))).toThrow(
+      InvalidDomainStateError,
+    );
     expect(() => outbox.scheduleRetry(new Date('invalid'))).toThrow(InvalidDomainStateError);
-    expect(() => outbox.scheduleRetry(new Date('2025-01-01T00:00:00.000Z'))).toThrow(InvalidDomainStateError);
+    expect(() => outbox.scheduleRetry(new Date('2025-01-01T00:00:00.000Z'))).toThrow(
+      InvalidDomainStateError,
+    );
     expect(outbox.attempts).toBe(0);
     expect(outbox.isPending()).toBe(true);
   });
@@ -73,14 +87,24 @@ describe('OutboxMessage', () => {
   it('rehydrates state including retry/published information without resetting it', () => {
     const original = message();
     const copy = OutboxMessage.rehydrate({
-      id: original.id, aggregateId: original.aggregateId, eventType: original.eventType,
-      payload: original.payload, occurredAt: date(1), attempts: 9, nextAttemptAt: date(2),
+      id: original.id,
+      aggregateId: original.aggregateId,
+      eventType: original.eventType,
+      payload: original.payload,
+      occurredAt: date(1),
+      attempts: 9,
+      nextAttemptAt: date(2),
     });
     expect(copy.attempts).toBe(9);
     expect(copy.isDue(date(1))).toBe(false);
     const sent = OutboxMessage.rehydrate({
-      id: original.id, aggregateId: original.aggregateId, eventType: original.eventType,
-      payload: original.payload, occurredAt: date(1), attempts: 1, publishedAt: date(2),
+      id: original.id,
+      aggregateId: original.aggregateId,
+      eventType: original.eventType,
+      payload: original.payload,
+      occurredAt: date(1),
+      attempts: 1,
+      publishedAt: date(2),
     });
     expect(sent.isPending()).toBe(false);
   });

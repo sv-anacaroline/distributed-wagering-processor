@@ -42,12 +42,7 @@ export class Wallet {
     this._updatedAt = new Date(updatedAt);
   }
 
-  static open(props: {
-    id: string;
-    playerId: string;
-    initialBalance: Money;
-    at: Date;
-  }): Wallet {
+  static open(props: { id: string; playerId: string; initialBalance: Money; at: Date }): Wallet {
     assertNonEmpty(props.id, 'wallet.id');
     assertNonEmpty(props.playerId, 'wallet.playerId');
     assertValidDate(props.at, 'wallet.createdAt');

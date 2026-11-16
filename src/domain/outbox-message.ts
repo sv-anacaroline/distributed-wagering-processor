@@ -1,8 +1,4 @@
-import {
-  AlreadyProcessedError,
-  assertValidDate,
-  InvalidDomainStateError,
-} from './errors.js';
+import { AlreadyProcessedError, assertValidDate, InvalidDomainStateError } from './errors.js';
 import type { IntegrationEvent } from './integration-event.js';
 
 export interface OutboxMessageState {
@@ -17,7 +13,9 @@ export interface OutboxMessageState {
 }
 
 /** Snapshot an event envelope so callers can never mutate pending payloads. */
-function immutablePayload(payload: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+function immutablePayload(
+  payload: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
   const copy = structuredClone(payload);
   const freeze = (value: unknown): void => {
     if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -69,13 +67,26 @@ export class OutboxMessage {
       version: envelope.version,
       data: envelope.data,
     };
-    return new OutboxMessage(event.eventId, event.aggregateId, event.eventType, payload, event.occurredAt, 0);
+    return new OutboxMessage(
+      event.eventId,
+      event.aggregateId,
+      event.eventType,
+      payload,
+      event.occurredAt,
+      0,
+    );
   }
 
   static rehydrate(state: OutboxMessageState): OutboxMessage {
     return new OutboxMessage(
-      state.id, state.aggregateId, state.eventType, state.payload,
-      state.occurredAt, state.attempts, state.nextAttemptAt, state.publishedAt,
+      state.id,
+      state.aggregateId,
+      state.eventType,
+      state.payload,
+      state.occurredAt,
+      state.attempts,
+      state.nextAttemptAt,
+      state.publishedAt,
     );
   }
 

@@ -40,13 +40,21 @@ export class InboxMessage {
     assertNonEmpty(props.consumerName, 'inbox.consumerName');
     assertNonEmpty(props.payloadHash, 'inbox.payloadHash');
     assertValidDate(props.receivedAt, 'inbox.receivedAt');
-    return new InboxMessage(props.messageId, props.consumerName, props.payloadHash, props.receivedAt);
+    return new InboxMessage(
+      props.messageId,
+      props.consumerName,
+      props.payloadHash,
+      props.receivedAt,
+    );
   }
 
   static rehydrate(state: InboxMessageState): InboxMessage {
     return new InboxMessage(
-      state.messageId, state.consumerName, state.payloadHash,
-      state.receivedAt, state.processedAt,
+      state.messageId,
+      state.consumerName,
+      state.payloadHash,
+      state.receivedAt,
+      state.processedAt,
     );
   }
 

@@ -24,7 +24,9 @@ export class Money {
       typeof props.amount !== 'string' ||
       !/^(?:0|[1-9][0-9]{0,17})\.[0-9]{2}$/.test(props.amount)
     ) {
-      throw new InvalidMoneyError('Amount must be a nonnegative decimal string with exactly 2 digits');
+      throw new InvalidMoneyError(
+        'Amount must be a nonnegative decimal string with exactly 2 digits',
+      );
     }
     Money.assertCurrency(props.currency);
     return Money.fromCents(BigInt(props.amount.replace('.', '')), props.currency);

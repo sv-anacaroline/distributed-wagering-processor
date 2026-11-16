@@ -5,7 +5,11 @@ import {
   InvalidLedgerEntryError,
 } from './errors.js';
 import { Money } from './money.js';
-import { LedgerDirection, WalletLedgerEntry, type LedgerEntryState } from './wallet-ledger-entry.js';
+import {
+  LedgerDirection,
+  WalletLedgerEntry,
+  type LedgerEntryState,
+} from './wallet-ledger-entry.js';
 
 const m = (amount: string, currency = 'BRL'): Money => Money.from({ amount, currency });
 const base = (): LedgerEntryState => ({
@@ -42,24 +46,34 @@ describe('WalletLedgerEntry', () => {
     expect(() => WalletLedgerEntry.create({ ...base(), balanceAfter: m('19.99') })).toThrow(
       InvalidLedgerEntryError,
     );
-    expect(() => WalletLedgerEntry.create({ ...base(), balanceBefore: m('20.00'), balanceAfter: m('0.00') })).toThrow(InvalidLedgerEntryError);
-    expect(() => WalletLedgerEntry.create({ ...base(), balanceAfter: m('0.00').subtract(m('1.00')) })).toThrow(InvalidLedgerEntryError);
+    expect(() =>
+      WalletLedgerEntry.create({ ...base(), balanceBefore: m('20.00'), balanceAfter: m('0.00') }),
+    ).toThrow(InvalidLedgerEntryError);
+    expect(() =>
+      WalletLedgerEntry.create({ ...base(), balanceAfter: m('0.00').subtract(m('1.00')) }),
+    ).toThrow(InvalidLedgerEntryError);
   });
 
   it('requires a positive amount and known direction', () => {
     expect(() => WalletLedgerEntry.create({ ...base(), money: Money.zero('BRL') })).toThrow(
       InvalidLedgerEntryError,
     );
-    expect(() => WalletLedgerEntry.create({ ...base(), direction: 'OTHER' as LedgerDirection })).toThrow(
-      InvalidLedgerEntryError,
-    );
+    expect(() =>
+      WalletLedgerEntry.create({ ...base(), direction: 'OTHER' as LedgerDirection }),
+    ).toThrow(InvalidLedgerEntryError);
   });
 
   it('rejects inconsistent currencies and missing identifiers', () => {
-    expect(() => WalletLedgerEntry.create({ ...base(), balanceAfter: m('20.00', 'USD') })).toThrow(CurrencyMismatchError);
+    expect(() => WalletLedgerEntry.create({ ...base(), balanceAfter: m('20.00', 'USD') })).toThrow(
+      CurrencyMismatchError,
+    );
     expect(() => WalletLedgerEntry.create({ ...base(), id: '' })).toThrow(InvalidDomainStateError);
-    expect(() => WalletLedgerEntry.create({ ...base(), walletId: '' })).toThrow(InvalidDomainStateError);
-    expect(() => WalletLedgerEntry.create({ ...base(), transactionId: '' })).toThrow(InvalidDomainStateError);
+    expect(() => WalletLedgerEntry.create({ ...base(), walletId: '' })).toThrow(
+      InvalidDomainStateError,
+    );
+    expect(() => WalletLedgerEntry.create({ ...base(), transactionId: '' })).toThrow(
+      InvalidDomainStateError,
+    );
   });
 
   it('copies timestamps defensively', () => {

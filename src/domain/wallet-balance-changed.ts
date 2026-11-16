@@ -24,7 +24,9 @@ export class WalletBalanceChanged extends IntegrationEvent<WalletBalanceChangedD
       !wallet.balance.equals(entry.balanceAfter) ||
       wallet.version < 1
     ) {
-      throw new InvalidDomainStateError('WalletBalanceChanged requires the resulting committed wallet state');
+      throw new InvalidDomainStateError(
+        'WalletBalanceChanged requires the resulting committed wallet state',
+      );
     }
     return new WalletBalanceChanged({
       eventId: ctx.eventId,

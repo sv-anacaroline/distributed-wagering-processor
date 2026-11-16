@@ -22,7 +22,9 @@ export class WagerTransactionProcessed extends IntegrationEvent<WagerTransaction
 
   static from(transaction: WagerTransaction, ctx: EventContext): WagerTransactionProcessed {
     if (transaction.status !== WagerTransactionStatus.Processed) {
-      throw new InvalidTransactionStateError('Only PROCESSED transactions produce processed events');
+      throw new InvalidTransactionStateError(
+        'Only PROCESSED transactions produce processed events',
+      );
     }
     return new WagerTransactionProcessed({
       eventId: ctx.eventId,

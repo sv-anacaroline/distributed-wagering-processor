@@ -61,9 +61,13 @@ describe('IntegrationEvent', () => {
   it('validates required fields and omits optional causationId', () => {
     expect(() => TestEvent.from({ ...props(), eventId: '' })).toThrow(InvalidDomainStateError);
     expect(() => TestEvent.from({ ...props(), aggregateId: '' })).toThrow(InvalidDomainStateError);
-    expect(() => TestEvent.from({ ...props(), correlationId: '' })).toThrow(InvalidDomainStateError);
+    expect(() => TestEvent.from({ ...props(), correlationId: '' })).toThrow(
+      InvalidDomainStateError,
+    );
     expect(() => TestEvent.from({ ...props(), causationId: '' })).toThrow(InvalidDomainStateError);
-    expect(() => TestEvent.from({ ...props(), occurredAt: new Date('invalid') })).toThrow(InvalidDomainStateError);
+    expect(() => TestEvent.from({ ...props(), occurredAt: new Date('invalid') })).toThrow(
+      InvalidDomainStateError,
+    );
     const { causationId, ...withoutCausation } = props();
     expect(causationId).toBe('txn-1');
     expect(TestEvent.from(withoutCausation).toJSON().causationId).toBeUndefined();

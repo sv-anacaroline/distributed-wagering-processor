@@ -22,18 +22,30 @@ describe('InboxMessage', () => {
 
   it('marks processing only once and refuses timestamps before reception', () => {
     const inbox = InboxMessage.receive(props());
-    expect(() => inbox.markProcessed(new Date('2025-01-01T00:00:00.000Z'))).toThrow(InvalidDomainStateError);
+    expect(() => inbox.markProcessed(new Date('2025-01-01T00:00:00.000Z'))).toThrow(
+      InvalidDomainStateError,
+    );
     inbox.markProcessed(new Date('2026-01-02T00:00:00.000Z'));
     expect(inbox.isProcessed()).toBe(true);
     expect(inbox.processedAt?.toISOString()).toBe('2026-01-02T00:00:00.000Z');
-    expect(() => inbox.markProcessed(new Date('2026-01-03T00:00:00.000Z'))).toThrow(AlreadyProcessedError);
+    expect(() => inbox.markProcessed(new Date('2026-01-03T00:00:00.000Z'))).toThrow(
+      AlreadyProcessedError,
+    );
   });
 
   it('validates consumer/message/hash and valid receive timestamps', () => {
-    expect(() => InboxMessage.receive({ ...props(), messageId: '' })).toThrow(InvalidDomainStateError);
-    expect(() => InboxMessage.receive({ ...props(), consumerName: ' ' })).toThrow(InvalidDomainStateError);
-    expect(() => InboxMessage.receive({ ...props(), payloadHash: '' })).toThrow(InvalidDomainStateError);
-    expect(() => InboxMessage.receive({ ...props(), receivedAt: new Date('invalid') })).toThrow(InvalidDomainStateError);
+    expect(() => InboxMessage.receive({ ...props(), messageId: '' })).toThrow(
+      InvalidDomainStateError,
+    );
+    expect(() => InboxMessage.receive({ ...props(), consumerName: ' ' })).toThrow(
+      InvalidDomainStateError,
+    );
+    expect(() => InboxMessage.receive({ ...props(), payloadHash: '' })).toThrow(
+      InvalidDomainStateError,
+    );
+    expect(() => InboxMessage.receive({ ...props(), receivedAt: new Date('invalid') })).toThrow(
+      InvalidDomainStateError,
+    );
   });
 
   it('defensively copies timestamps in both directions', () => {
@@ -50,7 +62,8 @@ describe('InboxMessage', () => {
 
   it('rehydrates persisted processing state without replaying it', () => {
     const inbox = InboxMessage.rehydrate({
-      ...props(), processedAt: new Date('2026-01-02T00:00:00.000Z'),
+      ...props(),
+      processedAt: new Date('2026-01-02T00:00:00.000Z'),
     });
     expect(inbox.isProcessed()).toBe(true);
     expect(inbox.processedAt?.toISOString()).toBe('2026-01-02T00:00:00.000Z');

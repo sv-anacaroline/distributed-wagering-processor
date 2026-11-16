@@ -104,7 +104,9 @@ export class WagerTransaction {
   }
 
   /** Only the internal wallet-opening flow may create OPENING transactions. */
-  static opening(props: Omit<CreateWagerTransactionProps, 'kind' | 'referenceExternalTransactionId'>): WagerTransaction {
+  static opening(
+    props: Omit<CreateWagerTransactionProps, 'kind' | 'referenceExternalTransactionId'>,
+  ): WagerTransaction {
     return WagerTransaction.createPending({ ...props, kind: WagerTransactionKind.Opening });
   }
 
@@ -136,7 +138,11 @@ export class WagerTransaction {
     }
     if (
       props.referenceExternalTransactionId !== undefined &&
-      ![WagerTransactionKind.Win, WagerTransactionKind.Refund, WagerTransactionKind.Rollback].includes(props.kind)
+      ![
+        WagerTransactionKind.Win,
+        WagerTransactionKind.Refund,
+        WagerTransactionKind.Rollback,
+      ].includes(props.kind)
     ) {
       throw new InvalidReferenceError('Reference is not permitted for this kind');
     }
@@ -144,20 +150,43 @@ export class WagerTransaction {
       throw new InvalidReferenceError('A transaction cannot reference itself');
     }
     return new WagerTransaction(
-      props.id, props.providerId, props.externalTransactionId, props.idempotencyKey,
-      props.payloadHash, props.walletId, props.playerId, props.roundId, props.gameId,
-      props.kind, props.money, props.referenceExternalTransactionId,
-      props.createdAt, WagerTransactionStatus.Pending,
+      props.id,
+      props.providerId,
+      props.externalTransactionId,
+      props.idempotencyKey,
+      props.payloadHash,
+      props.walletId,
+      props.playerId,
+      props.roundId,
+      props.gameId,
+      props.kind,
+      props.money,
+      props.referenceExternalTransactionId,
+      props.createdAt,
+      WagerTransactionStatus.Pending,
     );
   }
 
   /** Only reconstructs persisted fields; no business transition is replayed. */
   static rehydrate(state: WagerTransactionState): WagerTransaction {
     return new WagerTransaction(
-      state.id, state.providerId, state.externalTransactionId, state.idempotencyKey,
-      state.payloadHash, state.walletId, state.playerId, state.roundId, state.gameId,
-      state.kind, state.money, state.referenceExternalTransactionId, state.createdAt,
-      state.status, state.referenceTransactionId, state.failureCode, state.processedAt,
+      state.id,
+      state.providerId,
+      state.externalTransactionId,
+      state.idempotencyKey,
+      state.payloadHash,
+      state.walletId,
+      state.playerId,
+      state.roundId,
+      state.gameId,
+      state.kind,
+      state.money,
+      state.referenceExternalTransactionId,
+      state.createdAt,
+      state.status,
+      state.referenceTransactionId,
+      state.failureCode,
+      state.processedAt,
     );
   }
 
@@ -204,7 +233,9 @@ export class WagerTransaction {
   markPendingReference(): void {
     this.assertActive();
     if (this.referenceExternalTransactionId === undefined) {
-      throw new InvalidTransactionStateError('Cannot await a reference not declared by the transaction');
+      throw new InvalidTransactionStateError(
+        'Cannot await a reference not declared by the transaction',
+      );
     }
     this._status = WagerTransactionStatus.PendingReference;
   }

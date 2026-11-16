@@ -6,15 +6,25 @@ import { WagerTransactionPendingReference } from './wager-transaction-pending-re
 
 const tx = (): WagerTransaction =>
   WagerTransaction.create({
-    id: 'tx-r', providerId: 'provider1', externalTransactionId: 'refund1',
-    idempotencyKey: 'key-r', payloadHash: 'hash-r', walletId: 'w1',
-    playerId: 'p1', roundId: 'r1', gameId: 'g1',
+    id: 'tx-r',
+    providerId: 'provider1',
+    externalTransactionId: 'refund1',
+    idempotencyKey: 'key-r',
+    payloadHash: 'hash-r',
+    walletId: 'w1',
+    playerId: 'p1',
+    roundId: 'r1',
+    gameId: 'g1',
     kind: WagerTransactionKind.Refund,
     money: Money.from({ amount: '20.00', currency: 'BRL' }),
     referenceExternalTransactionId: 'original-bet',
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
   });
-const ctx = () => ({ eventId: 'event-r', correlationId: 'command-r', at: new Date('2026-01-02T00:00:00.000Z') });
+const ctx = () => ({
+  eventId: 'event-r',
+  correlationId: 'command-r',
+  at: new Date('2026-01-02T00:00:00.000Z'),
+});
 
 describe('WagerTransactionPendingReference', () => {
   it('rejects events for transactions not awaiting a reference', () => {

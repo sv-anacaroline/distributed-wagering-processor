@@ -13,10 +13,25 @@ describe('Money', () => {
   });
 
   it('rejects invalid external money and malformed currency', () => {
-    for (const amount of ['25.1', '25.123', '-1.00', '1e3', 'NaN', 'Infinity', '', ' 1.00', '01.00', '1', '.10', '9999999999999999999.99']) {
+    for (const amount of [
+      '25.1',
+      '25.123',
+      '-1.00',
+      '1e3',
+      'NaN',
+      'Infinity',
+      '',
+      ' 1.00',
+      '01.00',
+      '1',
+      '.10',
+      '9999999999999999999.99',
+    ]) {
       expect(() => money(amount)).toThrow(InvalidMoneyError);
     }
-    expect(() => Money.from({ amount: 25 as unknown as string, currency: 'BRL' })).toThrow(InvalidMoneyError);
+    expect(() => Money.from({ amount: 25 as unknown as string, currency: 'BRL' })).toThrow(
+      InvalidMoneyError,
+    );
     for (const currency of ['brl', 'BR', '', 'BRLL', '1BR']) {
       expect(() => money('1.00', currency)).toThrow(InvalidMoneyError);
       expect(() => Money.zero(currency)).toThrow(InvalidMoneyError);

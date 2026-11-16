@@ -22,7 +22,12 @@ const movement = (amount: string) => ({
 describe('Wallet', () => {
   it('opens with version 1, a nonnegative balance and defensive timestamp', () => {
     const timestamp = at();
-    const wallet = Wallet.open({ id: 'w1', playerId: 'p1', initialBalance: m('10.00'), at: timestamp });
+    const wallet = Wallet.open({
+      id: 'w1',
+      playerId: 'p1',
+      initialBalance: m('10.00'),
+      at: timestamp,
+    });
     expect(wallet.id).toBe('w1');
     expect(wallet.playerId).toBe('p1');
     expect(wallet.currency).toBe('BRL');
@@ -37,8 +42,12 @@ describe('Wallet', () => {
 
   it('rejects invalid opening state', () => {
     expect(() => open(m('0.00').subtract(m('1.00')))).toThrow(InvalidDomainStateError);
-    expect(() => Wallet.open({ id: '', playerId: 'p1', initialBalance: m('1.00'), at: at() })).toThrow(InvalidDomainStateError);
-    expect(() => Wallet.open({ id: 'w1', playerId: '', initialBalance: m('1.00'), at: at() })).toThrow(InvalidDomainStateError);
+    expect(() =>
+      Wallet.open({ id: '', playerId: 'p1', initialBalance: m('1.00'), at: at() }),
+    ).toThrow(InvalidDomainStateError);
+    expect(() =>
+      Wallet.open({ id: 'w1', playerId: '', initialBalance: m('1.00'), at: at() }),
+    ).toThrow(InvalidDomainStateError);
   });
 
   it('debits and returns an exact ledger entry, increasing version once', () => {
@@ -72,8 +81,12 @@ describe('Wallet', () => {
   it('rejects zero and negative movements and currency conflicts', () => {
     const wallet = open();
     expect(() => wallet.credit(movement('0.00'))).toThrow(InvalidDomainStateError);
-    expect(() => wallet.debit({ ...movement('1.00'), money: m('0.00').subtract(m('1.00')) })).toThrow(InvalidDomainStateError);
-    expect(() => wallet.credit({ ...movement('1.00'), money: m('1.00', 'USD') })).toThrow(CurrencyMismatchError);
+    expect(() =>
+      wallet.debit({ ...movement('1.00'), money: m('0.00').subtract(m('1.00')) }),
+    ).toThrow(InvalidDomainStateError);
+    expect(() => wallet.credit({ ...movement('1.00'), money: m('1.00', 'USD') })).toThrow(
+      CurrencyMismatchError,
+    );
     expect(wallet.version).toBe(1);
   });
 
@@ -86,7 +99,9 @@ describe('Wallet', () => {
 
   it('prevents timestamps moving backwards', () => {
     const wallet = open();
-    expect(() => wallet.debit({ ...movement('1.00'), at: new Date('2025-01-01T00:00:00.000Z') })).toThrow(InvalidDomainStateError);
+    expect(() =>
+      wallet.debit({ ...movement('1.00'), at: new Date('2025-01-01T00:00:00.000Z') }),
+    ).toThrow(InvalidDomainStateError);
     wallet.credit(movement('1.00'));
     expect(() => wallet.debit({ ...movement('1.00'), at: at() })).toThrow(InvalidDomainStateError);
     expect(wallet.version).toBe(2);
@@ -94,8 +109,12 @@ describe('Wallet', () => {
 
   it('rehydrates historical state without increment or replay', () => {
     const wallet = Wallet.rehydrate({
-      id: 'stored', playerId: 'p1', balance: m('42.01'), version: 8,
-      createdAt: at(), updatedAt: at(),
+      id: 'stored',
+      playerId: 'p1',
+      balance: m('42.01'),
+      version: 8,
+      createdAt: at(),
+      updatedAt: at(),
     });
     expect(wallet.balance.toJSON().amount).toBe('42.01');
     expect(wallet.version).toBe(8);
