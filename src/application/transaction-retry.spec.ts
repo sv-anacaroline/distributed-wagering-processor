@@ -5,6 +5,15 @@ import { isTransientDatabaseError, withTransactionRetry } from './transaction-re
 const sqlError = (code: string): Error & { code: string } =>
   Object.assign(new Error('database error'), { code });
 
+async function rejected(operation: () => Promise<unknown>): Promise<unknown> {
+  try {
+    await operation();
+  } catch (error: unknown) {
+    return error;
+  }
+  throw new Error('Expected an exception');
+}
+
 describe('transaction retries', () => {
   it('recognizes only retryable PostgreSQL SQLSTATE codes, including nested driver errors', () => {
     for (const code of ['40001', '40P01', '55P03']) {
@@ -51,11 +60,12 @@ describe('transaction retries', () => {
     let calls = 0;
     const delays: number[] = [];
     const failure = sqlError('40001');
-    await expect(withTransactionRetry(
+    const caught = await rejected(() => withTransactionRetry(
       () => { calls++; return Promise.reject(failure); },
       ms => { delays.push(ms); return Promise.resolve(); },
       () => 0,
-    )).rejects.toBe(failure);
+    ));
+    expect(caught).toBe(failure);
     expect(calls).toBe(3);
     expect(delays).toEqual([10, 20]);
   });
@@ -63,18 +73,29 @@ describe('transaction retries', () => {
   it('never retries uniqueness or business errors', async () => {
     for (const error of [sqlError('23505'), new InsufficientFundsError()]) {
       let calls = 0;
-      await expect(withTransactionRetry(
+      const caught = await rejected(() => withTransactionRetry(
         () => { calls++; return Promise.reject(error); },
-      )).rejects.toBe(error);
+      ));
+      expect(caught).toBe(error);
       expect(calls).toBe(1);
     }
+  });
+
+  it('uses the default short sleep and jitter when recovering from a transient SQL error', async () => {
+    let calls = 0;
+    const result = await withTransactionRetry(() => {
+      calls++;
+      return calls === 1 ? Promise.reject(sqlError('40001')) : Promise.resolve('committed');
+    });
+    expect(result).toBe('committed');
+    expect(calls).toBe(2);
   });
 
   it('caps jitter and handles wrapped lock errors', async () => {
     let calls = 0;
     const delays: number[] = [];
     await withTransactionRetry(
-      () => { calls++; return calls < 3 ? Promise.reject({ cause: sqlError('55P03') }) : Promise.resolve(); },
+      () => { calls++; return calls < 3 ? Promise.reject(Object.assign(new Error('wrapped DB error'), { cause: sqlError('55P03') })) : Promise.resolve(); },
       ms => { delays.push(ms); return Promise.resolve(); },
       () => 5,
     );

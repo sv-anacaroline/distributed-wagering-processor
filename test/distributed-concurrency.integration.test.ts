@@ -208,8 +208,8 @@ describe('section 8 — independent Bun processes, shared PostgreSQL', () => {
     expect(await state(w.walletId)).toEqual({ balance: '100.00', version: 3 });
     expect(await ledgerDebits(w.walletId)).toBe(1);
     expect(await countOutbox(w.walletId)).toBe(5);
-    expect(await workers[2]!.process(refund)).toEqual(
-      results.find(result => result?.status === Status.Processed),
-    );
+    const applied = results.find(result => result?.status === Status.Processed);
+    if (!applied) throw new Error('Expected the pending refund to be applied');
+    expect(await workers[2]!.process(refund)).toEqual(applied);
   }, 60_000);
 });
