@@ -15,7 +15,11 @@ function databaseCode(error: unknown): string | undefined {
 }
 export function httpError(error: unknown): { status: number; code: string; message: string } {
   if (error instanceof TransientProcessingError) {
-    return { status: 503, code: 'INFRASTRUCTURE_UNAVAILABLE', message: 'Temporary processing contention' };
+    return {
+      status: 503,
+      code: 'INFRASTRUCTURE_UNAVAILABLE',
+      message: 'Temporary processing contention',
+    };
   }
   if (error instanceof DomainError) {
     if (error.code === 'IDEMPOTENCY_CONFLICT') {

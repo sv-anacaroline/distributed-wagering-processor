@@ -193,7 +193,9 @@ describe('SQS wager worker delivery policy', () => {
   it('distinguishes permanent domain messages from transient outages', () => {
     expect(isPermanentWagerError(new InvalidSqsMessageError('bad'))).toBe(true);
     expect(isPermanentWagerError(new Error('network'))).toBe(false);
-    expect(isPermanentWagerError(new TransientProcessingError('Concurrent wallet write detected'))).toBe(false);
+    expect(
+      isPermanentWagerError(new TransientProcessingError('Concurrent wallet write detected')),
+    ).toBe(false);
     expect(receiveCount(message(payload(), '-5'))).toBe(1);
     expect(retryVisibilitySeconds(5)).toBe(16);
   });
