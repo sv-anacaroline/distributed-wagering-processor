@@ -19,7 +19,15 @@
     "test:watch": "bun test --watch ./src",
     "test:cov": "bun test --coverage ./src",
     "test:e2e": "bun test ./test",
-    "test:load": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm k6"
+    "test:load": "docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm k6",
+    "db:debug": "bunx --bun mikro-orm debug --config ./src/mikro-orm.config.ts",
+    "db:migrate:create": "bunx --bun mikro-orm migration:create --config ./src/mikro-orm.config.ts",
+    "db:migrate:up": "bunx --bun mikro-orm migration:up --config ./src/mikro-orm.config.ts",
+    "db:migrate:down": "bunx --bun mikro-orm migration:down --config ./src/mikro-orm.config.ts",
+    "db:migrate:rollback": "bun run db:migrate:down",
+    "db:migrate:pending": "bunx --bun mikro-orm migration:pending --config ./src/mikro-orm.config.ts",
+    "db:migrate:list": "bunx --bun mikro-orm migration:list --config ./src/mikro-orm.config.ts",
+    "db:migrate:check": "bunx --bun mikro-orm migration:check --config ./src/mikro-orm.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
