@@ -65,6 +65,14 @@ export interface InboxReceipt {
   readonly payloadHash: string;
 }
 
+/** Retriable operational contention, not a permanently invalid business command. */
+export class TransientProcessingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TransientProcessingError';
+  }
+}
+
 export class InboxPayloadConflictError extends Error {
   constructor() {
     super('Inbox message identity was redelivered with a different payload');
@@ -105,10 +113,10 @@ async function reserveInbox(em: EntityManager, receipt: InboxReceipt, at: Date):
      where consumer_name=? and message_id=? for update`,
     [inbox.consumerName, inbox.messageId],
   );
-  if (!stored) throw new InvalidDomainStateError('Inbox identity disappeared');
+  if (!stored) throw new TransientProcessingError('Inbox identity disappeared');
   if (!inbox.matchesPayload(stored.payload_hash)) throw new InboxPayloadConflictError();
   if (!stored.processed_at) {
-    throw new InvalidDomainStateError('Previously reserved inbox message has not committed');
+    throw new TransientProcessingError('Previously reserved inbox message has not committed');
   }
   return false;
 }
@@ -172,7 +180,7 @@ async function dbNow(em: EntityManager, wallet: Wallet): Promise<Date> {
     'select greatest(clock_timestamp(), ?::timestamptz) as at',
     [wallet.updatedAt],
   );
-  if (!row) throw new InvalidDomainStateError('Database clock unavailable');
+  if (!row) throw new TransientProcessingError('Database clock unavailable');
   return new Date(row.at);
 }
 async function findExisting(em: EntityManager, cmd: WagerCommand): Promise<WagerRow | undefined> {
@@ -288,7 +296,7 @@ async function persist(
       'run',
     );
     if (changes.affectedRows !== 1)
-      throw new InvalidDomainStateError('Concurrent wallet write detected');
+      throw new TransientProcessingError('Concurrent wallet write detected');
     await em.execute(
       `
       insert into wallet_ledger_entries(

@@ -12,6 +12,7 @@ import { DomainError } from '../domain/errors.js';
 import {
   IdempotencyConflictError,
   InboxPayloadConflictError,
+  TransientProcessingError,
   type ProcessWager,
 } from '../application/process-wager.js';
 import { InvalidSqsMessageError, parseWagerRequest } from './wager-request.js';
@@ -30,6 +31,7 @@ export function retryVisibilitySeconds(count: number): number {
   return Math.min(2 ** (capped - 1), 60);
 }
 export function isPermanentWagerError(error: unknown): boolean {
+  if (error instanceof TransientProcessingError) return false;
   return (
     error instanceof InvalidSqsMessageError ||
     error instanceof InboxPayloadConflictError ||

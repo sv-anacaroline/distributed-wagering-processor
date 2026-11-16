@@ -7,6 +7,7 @@ import {
   type Message,
 } from '@aws-sdk/client-sqs';
 import { InvalidSqsMessageError } from './wager-request.js';
+import { TransientProcessingError } from '../application/process-wager.js';
 import {
   SqsWagerConsumer,
   isPermanentWagerError,
@@ -192,6 +193,7 @@ describe('SQS wager worker delivery policy', () => {
   it('distinguishes permanent domain messages from transient outages', () => {
     expect(isPermanentWagerError(new InvalidSqsMessageError('bad'))).toBe(true);
     expect(isPermanentWagerError(new Error('network'))).toBe(false);
+    expect(isPermanentWagerError(new TransientProcessingError('Concurrent wallet write detected'))).toBe(false);
     expect(receiveCount(message(payload(), '-5'))).toBe(1);
     expect(retryVisibilitySeconds(5)).toBe(16);
   });

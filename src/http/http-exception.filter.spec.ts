@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InvalidMoneyError, DomainError } from '../domain/errors.js';
-import { IdempotencyConflictError } from '../application/process-wager.js';
+import { IdempotencyConflictError, TransientProcessingError } from '../application/process-wager.js';
 import { HttpExceptionFilter, httpError } from './http-exception.filter.js';
 
 describe('stable HTTP error taxonomy', () => {
@@ -24,6 +24,7 @@ describe('stable HTTP error taxonomy', () => {
     expect(httpError({ driverException: { code: '08006' } }).status).toBe(503);
     expect(httpError({ cause: { code: '40P01' } }).code).toBe('INFRASTRUCTURE_UNAVAILABLE');
     expect(httpError({ code: 'ECONNREFUSED' }).status).toBe(503);
+    expect(httpError(new TransientProcessingError('Concurrent wallet write detected')).status).toBe(503);
     expect(httpError(new Error('secret')).message).toBe('Internal server error');
   });
 });
