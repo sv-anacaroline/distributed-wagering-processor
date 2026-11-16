@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { Inject, randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectEntityManager } from '@mikro-orm/nestjs';
+import { EntityManager as CoreEntityManager } from '@mikro-orm/core';
 import { IsolationLevel } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
 import { Money, type MoneyProps } from '../domain/money.js';
@@ -28,7 +28,7 @@ interface LedgerTotal { readonly calculated: string; readonly entries: number }
 
 @Injectable()
 export class ReconciliationService {
-  constructor(@InjectEntityManager() private readonly em: EntityManager) {}
+  constructor(@Inject(CoreEntityManager) private readonly em: EntityManager) {}
 
   async run(walletId: string): Promise<ReconciliationResult> {
     // REPEATABLE READ uses one MVCC snapshot without serializing unrelated writers.

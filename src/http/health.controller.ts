@@ -1,10 +1,10 @@
-import { Controller, Get, Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { InjectEntityManager } from '@mikro-orm/nestjs';
+import { Inject, Controller, Get, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { EntityManager as CoreEntityManager } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
 
 @Injectable()
 export class HealthService {
-  constructor(@InjectEntityManager() private readonly em: EntityManager) {}
+  constructor(@Inject(CoreEntityManager) private readonly em: EntityManager) {}
 
   async ready(): Promise<{ status: 'ready'; postgres: 'up'; sqs: 'up' }> {
     let postgres = false;

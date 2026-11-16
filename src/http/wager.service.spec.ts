@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { NotFoundException } from '@nestjs/common';
+import { WagerTransactionStatus } from '../domain/wager-transaction.js';
 import { WagerService } from './wager.service.js';
 
 function service(records: unknown[]): WagerService {
@@ -18,7 +19,7 @@ describe('WagerService queries', () => {
   it('returns a typed immutable financial string contract for internal ID lookups', async () => {
     const result = await service([row()]).findById('id');
     expect(result.money).toEqual({ amount: '50.00', currency: 'BRL' });
-    expect(result.status).toBe('PROCESSED');
+    expect(result.status).toBe(WagerTransactionStatus.Processed);
     expect(result.processedAt).toBe('2026-11-16T00:00:01.000Z');
   });
   it('queries the same contract by provider and external ID', async () => {

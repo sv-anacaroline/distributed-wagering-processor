@@ -34,7 +34,7 @@ export class WalletController {
     if (cursor !== undefined && (typeof cursor !== 'string' || cursor.length > 1024)) {
       throw new BadRequestException('Invalid cursor');
     }
-    return this.wallets.ledger(uuidField(id, 'walletId'), pageLimit(limit), cursor as string | undefined);
+    return this.wallets.ledger(uuidField(id, 'walletId'), pageLimit(limit), cursor);
   }
 
   @Post(':walletId/reconciliation')

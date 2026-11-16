@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectEntityManager } from '@mikro-orm/nestjs';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { EntityManager as CoreEntityManager } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
 import { ProcessWager } from '../application/process-wager.js';
 import type { WagerCommand, WagerResult } from '../application/wager-contracts.js';
@@ -60,7 +60,7 @@ function transactionView(row: TransactionRow): TransactionView {
 
 @Injectable()
 export class WagerService {
-  constructor(@InjectEntityManager() private readonly em: EntityManager) {}
+  constructor(@Inject(CoreEntityManager) private readonly em: EntityManager) {}
 
   async submit(command: WagerCommand): Promise<WagerResult & { idempotentReplay: boolean }> {
     const processed = await new ProcessWager(this.em).processWithReplay(command);

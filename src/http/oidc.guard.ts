@@ -97,14 +97,14 @@ export class OidcAuthGuard implements CanActivate {
       const jwk = jwks.keys.find(item => item.kid === jwtHeader.kid && item.kty === 'RSA');
       if (!jwk) throw new UnauthorizedException('Unknown JWT key ID');
       try {
-        entry = { key: createPublicKey({ key: jwk as JsonWebKey, format: 'jwk' }), expiresAt: Date.now() + 300_000 };
+        entry = { key: createPublicKey({ key: jwk, format: 'jwk' } as Extract<Parameters<typeof createPublicKey>[0], { format: 'jwk' }>), expiresAt: Date.now() + 300_000 };
       } catch {
         throw new UnauthorizedException('Invalid OIDC public key');
       }
       this.keys.set(jwtHeader.kid, entry);
     }
     const claims = verifyOidcJwt(token, entry.key, issuer, audience, Math.floor(Date.now() / 1000));
-    req.authProviderId = claims.provider_id;
+    if (claims.provider_id) req.authProviderId = claims.provider_id;
     return true;
   }
 }

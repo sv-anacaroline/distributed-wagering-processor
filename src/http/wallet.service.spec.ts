@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { WalletService } from './wallet.service.js';
 
 interface DBStub {

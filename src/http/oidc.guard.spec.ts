@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { createPublicKey, createSign, generateKeyPairSync } from 'node:crypto';
+import { createSign, generateKeyPairSync } from 'node:crypto';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { assertProviderIdentity, verifyOidcJwt } from './oidc.guard.js';
 
@@ -17,7 +17,7 @@ function token(override: Record<string, unknown> = {}): string {
 }
 describe('OIDC JWT verification', () => {
   const verify = (value: string) =>
-    verifyOidcJwt(value, createPublicKey(publicKey), 'https://idp.example/realms/wagering', 'wagering-api', 1_800_000_000);
+    verifyOidcJwt(value, publicKey, 'https://idp.example/realms/wagering', 'wagering-api', 1_800_000_000);
   it('accepts RS256 signatures and verified provider claims', () => {
     expect(verify(token()).provider_id).toBe('provider-a');
   });

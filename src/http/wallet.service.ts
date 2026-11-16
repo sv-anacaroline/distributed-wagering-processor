@@ -1,6 +1,6 @@
-import { randomUUID, createHash } from 'node:crypto';
+import { Inject, randomUUID, createHash } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectEntityManager } from '@mikro-orm/nestjs';
+import { EntityManager as CoreEntityManager } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
 import { Money, type MoneyProps } from '../domain/money.js';
 import { Wallet } from '../domain/wallet.js';
@@ -63,7 +63,7 @@ function walletView(row: WalletRow): WalletView {
 
 @Injectable()
 export class WalletService {
-  constructor(@InjectEntityManager() private readonly em: EntityManager) {}
+  constructor(@Inject(CoreEntityManager) private readonly em: EntityManager) {}
 
   async create(playerId: string, initialBalance: MoneyProps): Promise<WalletView> {
     const balance = Money.from(initialBalance);
