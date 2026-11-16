@@ -296,13 +296,21 @@ export class ProcessWager {
   }
 
   async process(cmd: WagerCommand): Promise<WagerResult> {
+    return (await this.processWithReplay(cmd)).result;
+  }
+
+  /** Indicates actual replay from the locked SQL row; never guesses from live balance. */
+  async processWithReplay(cmd: WagerCommand): Promise<{
+    result: WagerResult;
+    idempotentReplay: boolean;
+  }> {
     const money = Money.from(cmd.money);
     const hash = payloadHash(cmd);
     return this.transaction(async (em) => {
       // Lock ordering: wallet first, then wager rows. The retry worker uses the same order.
       const wallet = await lockWallet(em, cmd.walletId);
       const recorded = await findExisting(em, cmd);
-      if (recorded) return replay(recorded, hash);
+      if (recorded) return { result: replay(recorded, hash), idempotentReplay: true };
 
       const at = await dbNow(em, wallet);
       const tx = WagerTransaction.create({
@@ -351,13 +359,13 @@ export class ProcessWager {
       );
       if (inserted.length === 0) {
         const collided = await findExisting(em, cmd);
-        if (collided) return replay(collided, hash);
+        if (collided) return { result: replay(collided, hash), idempotentReplay: true };
         throw new InvalidDomainStateError('Conflicting active financial reversal');
       }
       if (blocked) {
         const snapshot = responseSnapshot(tx, wallet, at);
         await emitResult(em, tx, wallet, at);
-        return snapshot;
+        return { result: snapshot, idempotentReplay: false };
       }
 
       const reference = await findReference(em, tx);
@@ -370,7 +378,7 @@ export class ProcessWager {
         ledgerEntryId: randomUUID(),
         at,
       });
-      return persist(
+      const snapshot = await persist(
         em,
         tx,
         wallet,
@@ -378,6 +386,7 @@ export class ProcessWager {
         result.ledgerEntry,
         tx.status === Status.PendingReference ? initialReferenceRetry(at) : undefined,
       );
+      return { result: snapshot, idempotentReplay: false };
     });
   }
 
