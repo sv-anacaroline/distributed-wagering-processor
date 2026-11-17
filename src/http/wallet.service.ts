@@ -65,7 +65,11 @@ function walletView(row: WalletRow): WalletView {
 export class WalletService {
   constructor(@Inject(CoreEntityManager) private readonly em: EntityManager) {}
 
-  async create(playerId: string, initialBalance: MoneyProps, providerId?: string): Promise<WalletView> {
+  async create(
+    playerId: string,
+    initialBalance: MoneyProps,
+    providerId?: string,
+  ): Promise<WalletView> {
     const balance = Money.from(initialBalance);
     const id = randomUUID();
     const at = new Date();

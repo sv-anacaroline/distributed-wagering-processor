@@ -23,7 +23,10 @@ interface ProviderRequest {
 @Controller('wagering/transactions')
 @UseGuards(OidcAuthGuard)
 export class WagerController {
-  constructor(private readonly wagers: WagerService, private readonly access: WalletAccessService) {}
+  constructor(
+    private readonly wagers: WagerService,
+    private readonly access: WalletAccessService,
+  ) {}
 
   @Post()
   @HttpCode(200)
@@ -59,7 +62,10 @@ export class WagerController {
 @Controller('providers/:providerId/wagering/transactions')
 @UseGuards(OidcAuthGuard)
 export class ProviderWagerController {
-  constructor(private readonly wagers: WagerService, private readonly access: WalletAccessService) {}
+  constructor(
+    private readonly wagers: WagerService,
+    private readonly access: WalletAccessService,
+  ) {}
 
   @Get(':externalTransactionId')
   async find(
@@ -70,7 +76,8 @@ export class ProviderWagerController {
     const provider = textField(providerId, 'providerId');
     assertProviderIdentity(provider, req.authProviderId);
     const transaction = await this.wagers.findByExternalId(
-      provider, textField(externalId, 'externalTransactionId'),
+      provider,
+      textField(externalId, 'externalTransactionId'),
     );
     await this.access.assertAllowed(transaction.walletId, req.authProviderId);
     return transaction;

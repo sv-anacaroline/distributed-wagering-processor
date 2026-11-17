@@ -7,8 +7,12 @@ import { WalletAccessService } from '../src/http/wallet-access.service.js';
 import { ForbiddenException } from '@nestjs/common';
 
 let orm: MikroORM;
-beforeAll(async () => { orm = await MikroORM.init(config); });
-afterAll(async () => { await orm.close(true); });
+beforeAll(async () => {
+  orm = await MikroORM.init(config);
+});
+afterAll(async () => {
+  await orm.close(true);
+});
 
 describe('PostgreSQL provider grants', () => {
   it('creates wallet and provider grant in one transaction; keeps wallet multi-provider capable', async () => {
@@ -30,7 +34,7 @@ describe('PostgreSQL provider grants', () => {
         'select provider_id from wallet_provider_grants where wallet_id=?::uuid order by provider_id',
         [opened.id],
       );
-      expect(grants.map(row => row.provider_id)).toEqual(['provider-a', 'provider-b']);
+      expect(grants.map((row) => row.provider_id)).toEqual(['provider-a', 'provider-b']);
       const wallet = await wallets.find(opened.id);
       expect(wallet.balance.amount).toBe('10.00');
     } finally {

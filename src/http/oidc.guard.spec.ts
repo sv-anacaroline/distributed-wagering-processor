@@ -8,7 +8,12 @@ import {
   UnauthorizedException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { assertMetricsIdentity, assertProviderIdentity, OidcAuthGuard, verifyOidcJwt } from './oidc.guard.js';
+import {
+  assertMetricsIdentity,
+  assertProviderIdentity,
+  OidcAuthGuard,
+  verifyOidcJwt,
+} from './oidc.guard.js';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 function token(override: Record<string, unknown> = {}): string {

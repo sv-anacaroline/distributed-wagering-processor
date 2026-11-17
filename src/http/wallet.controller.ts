@@ -29,7 +29,10 @@ export class WalletController {
   @Post()
   create(@Body() body: unknown, @Req() req: { authProviderId?: string }) {
     const request = walletPayload(body);
-    if (!req.authProviderId && !(process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production')) {
+    if (
+      !req.authProviderId &&
+      !(process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production')
+    ) {
       throw new ForbiddenException('A verified provider client is required');
     }
     return this.wallets.create(request.playerId, request.initialBalance, req.authProviderId);
@@ -53,9 +56,9 @@ export class WalletController {
       throw new BadRequestException('Invalid cursor');
     }
     const walletId = uuidField(id, 'walletId');
-    return this.access.assertAllowed(walletId, req.authProviderId).then(() =>
-      this.wallets.ledger(walletId, pageLimit(limit), cursor),
-    );
+    return this.access
+      .assertAllowed(walletId, req.authProviderId)
+      .then(() => this.wallets.ledger(walletId, pageLimit(limit), cursor));
   }
 
   @Post(':walletId/reconciliation')

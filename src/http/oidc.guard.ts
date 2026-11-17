@@ -85,7 +85,10 @@ export function assertProviderIdentity(providerId: string, authenticatedProvider
 
 export function assertMetricsIdentity(authorizedParty?: string): void {
   if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
-  if (!authorizedParty || authorizedParty !== (process.env.OIDC_METRICS_CLIENT_ID ?? 'wagering-monitor')) {
+  if (
+    !authorizedParty ||
+    authorizedParty !== (process.env.OIDC_METRICS_CLIENT_ID ?? 'wagering-monitor')
+  ) {
     throw new ForbiddenException('An operations identity is required');
   }
 }
@@ -130,10 +133,12 @@ export class OidcAuthGuard implements CanActivate {
       } catch {
         throw new ServiceUnavailableException('Identity provider is unreachable');
       }
-      const jwk = jwks.keys.find((item) =>
-        item.kid === jwtHeader.kid && item.kty === 'RSA' &&
-        (!('use' in item) || item.use === 'sig') &&
-        (!('alg' in item) || item.alg === 'RS256'),
+      const jwk = jwks.keys.find(
+        (item) =>
+          item.kid === jwtHeader.kid &&
+          item.kty === 'RSA' &&
+          (!('use' in item) || item.use === 'sig') &&
+          (!('alg' in item) || item.alg === 'RS256'),
       );
       if (!jwk) throw new UnauthorizedException('Unknown JWT key ID');
       try {

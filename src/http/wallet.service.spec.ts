@@ -146,12 +146,17 @@ describe('grant is part of the wallet-opening commit', () => {
   it('inserts access grant for the verified provider before ledger and opening', async () => {
     const queries: string[] = [];
     const manager = {
-      execute: (sql: string) => { queries.push(sql); return Promise.resolve([]); },
+      execute: (sql: string) => {
+        queries.push(sql);
+        return Promise.resolve([]);
+      },
       transactional: (fn: (em: unknown) => Promise<unknown>) => fn(manager),
     };
     const wallet = new WalletService({ fork: () => manager } as never);
     const result = await wallet.create(
-      randomUUID(), { amount: '10.00', currency: 'BRL' }, 'provider-a',
+      randomUUID(),
+      { amount: '10.00', currency: 'BRL' },
+      'provider-a',
     );
     expect(result.balance.amount).toBe('10.00');
     expect(queries[0]).toContain('insert into wallets');
