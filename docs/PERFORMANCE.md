@@ -83,3 +83,10 @@ ser requerido para aceitar o merge.
 O `K6_P95_MS` é um limiar experimental do cenário, não o SLA
 fixado pelo enunciado. Não inferir RPS ou latências sem executar os
 scripts em ambiente identificado.
+
+## Correlação das medições com traces
+
+É possível diagnosticar uma rota lenta pelo
+[dashboard de observabilidade](OBSERVABILITY.md) (p95 por rota, HTTP errors,
+Inbox/Outbox e links `trace_id` → Tempo). Esta instrumentação não muda
+as medições k6 históricas, que permanecem vinculadas ao commit medido.

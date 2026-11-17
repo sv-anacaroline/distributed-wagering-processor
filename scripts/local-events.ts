@@ -18,7 +18,7 @@ import type { WagerCommand } from '../src/application/wager-contracts.js';
 type ExternalKind = Exclude<Kind, Kind.Opening>;
 type Wallet = { id: string; playerId: string; balance: { amount: string; currency: string }; version: number };
 type Transaction = { id: string; status: string; failureCode?: string; result?: { balance: { amount: string }; walletVersion: number } };
-type OutboxRow = { event_type: string; published_at: Date | null; payload: { eventType: string; aggregateId: string; data: Record<string, unknown> } };
+type OutboxRow = { event_type: string; published_at: Date | null; traceparent: string | null; payload: { eventType: string; aggregateId: string; data: Record<string, unknown> } };
 type Ledger = { items: Array<{ direction: string; money: { amount: string } }> };
 type Reconciled = { consistent: boolean; calculatedBalance: { amount: string } };
 
@@ -152,7 +152,7 @@ async function waitForTransaction(
 }
 async function outbox(walletId: string, orm: MikroORM): Promise<OutboxRow[]> {
   return orm.em.fork().execute<OutboxRow[]>(
-    'select event_type,published_at,payload from outbox_messages where aggregate_id=?::uuid order by publication_sequence',
+    'select event_type,published_at,traceparent,payload from outbox_messages where aggregate_id=?::uuid order by publication_sequence',
     [walletId],
   );
 }
@@ -219,6 +219,10 @@ async function demo(token: string): Promise<void> {
     const published = await verifyPublished(wallet.id, orm, 17);
     const distribution = new Map<string, number>();
     for (const event of published) {
+      assert(
+        /^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/.test(event.traceparent ?? ''),
+        'Durable Outbox event lost its W3C trace context',
+      );
       assert(event.payload.eventType === event.event_type, 'Event type differs from SQL Outbox');
       assert(event.payload.aggregateId === wallet.id, 'Outbox aggregate mismatch');
       distribution.set(event.event_type, (distribution.get(event.event_type) ?? 0) + 1);

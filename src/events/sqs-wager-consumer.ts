@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { count, duration, log, withSpan } from '../telemetry/otel.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
   ChangeMessageVisibilityCommand,
@@ -57,6 +58,40 @@ export class SqsWagerConsumer {
   ) {}
 
   async processOne(message: Message, signal?: AbortSignal): Promise<MessageOutcome> {
+    return withSpan(
+      'sqs.wager.consume',
+      {
+        'messaging.system': 'aws.sqs',
+        'messaging.operation.name': 'process',
+        'messaging.message.id': message.MessageId ?? 'unknown',
+      },
+      async () => {
+        const startedAt = performance.now();
+        try {
+          const outcome = await this.processOneInner(message, signal);
+          count('wager_sqs_messages_total', { outcome });
+          log(outcome === 'dlq' ? 'warn' : 'info', 'sqs.message.completed', {
+            message_id: message.MessageId ?? 'unknown',
+            outcome,
+            receive_count: receiveCount(message),
+          });
+          return outcome;
+        } catch (error: unknown) {
+          count('wager_sqs_messages_total', { outcome: 'failure' });
+          log('error', 'sqs.message.failed', {
+            message_id: message.MessageId ?? 'unknown',
+            error_type: error instanceof Error ? error.name : 'UnknownError',
+          });
+          throw error;
+        } finally {
+          duration('wager_sqs_processing_duration_ms', performance.now() - startedAt);
+        }
+      },
+      message.MessageAttributes?.traceparent?.StringValue,
+    );
+  }
+
+  private async processOneInner(message: Message, signal?: AbortSignal): Promise<MessageOutcome> {
     if (!message.ReceiptHandle) throw new Error('SQS message missing ReceiptHandle');
     if (signal?.aborted) {
       await this.release(message.ReceiptHandle);
@@ -64,6 +99,11 @@ export class SqsWagerConsumer {
     }
     try {
       const parsed = parseWagerRequest(message.Body ?? '');
+      log('info', 'sqs.message.accepted', {
+        kind: parsed.command.kind,
+        message_id: parsed.messageId,
+        wallet_id: parsed.command.walletId,
+      });
       await this.wagering.processFromInbox(parsed.command, {
         consumerName: WAGER_CONSUMER_NAME,
         messageId: parsed.messageId,
@@ -147,6 +187,7 @@ export class SqsWagerConsumer {
         WaitTimeSeconds: 1,
         VisibilityTimeout: 60,
         MessageSystemAttributeNames: ['ApproximateReceiveCount', 'MessageGroupId'],
+        MessageAttributeNames: ['All'],
       }),
       { ...(signal ? { abortSignal: signal } : {}) },
     );
@@ -209,7 +250,9 @@ export class SqsWagerConsumer {
         await this.runOnce(signal);
       } catch (error: unknown) {
         if (signal.aborted) break;
-        console.error('SQS consumer iteration failed', error);
+        log('error', 'sqs.poll.failed', {
+          error_type: error instanceof Error ? error.name : 'UnknownError',
+        });
         try {
           await sleep(500, undefined, { signal });
         } catch {

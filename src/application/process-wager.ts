@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { withSpan, log, count, currentTraceparent } from '../telemetry/otel.js';
 import type { EntityManager } from '@mikro-orm/postgresql';
 import {
   DomainError,
@@ -266,8 +267,8 @@ async function emit(em: EntityManager, event: IntegrationEvent<unknown>): Promis
   const outbox = OutboxMessage.enqueue(event);
   await em.execute(
     `
-    insert into outbox_messages(id, aggregate_id, event_type, payload, occurred_at, attempts)
-    values (?::uuid, ?::uuid, ?, ?::jsonb, ?, 0)
+    insert into outbox_messages(id, aggregate_id, event_type, payload, occurred_at, attempts, traceparent)
+    values (?::uuid, ?::uuid, ?, ?::jsonb, ?, 0, ?)
   `,
     [
       outbox.id,
@@ -275,8 +276,14 @@ async function emit(em: EntityManager, event: IntegrationEvent<unknown>): Promis
       outbox.eventType,
       JSON.stringify(outbox.payload),
       outbox.occurredAt,
+      currentTraceparent(),
     ],
   );
+  log('info', 'outbox.event.enqueued', {
+    event_type: outbox.eventType,
+    event_id: outbox.id,
+    wallet_id: outbox.aggregateId,
+  });
 }
 async function emitResult(
   em: EntityManager,
@@ -377,7 +384,9 @@ export class ProcessWager {
 
   /** Each retry uses a fresh EntityManager + SQL transaction after releasing locks. */
   private async transaction<T>(work: (em: EntityManager) => Promise<T>): Promise<T> {
-    return withTransactionRetry(() => this.em.fork().transactional(work, { clear: true }));
+    return withSpan('postgres.financial.transaction', { 'db.system.name': 'postgresql' }, () =>
+      withTransactionRetry(() => this.em.fork().transactional(work, { clear: true })),
+    );
   }
 
   async process(cmd: WagerCommand): Promise<WagerResult> {
@@ -409,42 +418,51 @@ export class ProcessWager {
   }> {
     const money = Money.from(cmd.money);
     const hash = payloadHash(cmd);
-    return this.transaction(async (em) => {
-      // Lock ordering: wallet first, then wager rows. The retry worker uses the same order.
-      const wallet = await lockWallet(em, cmd.walletId);
-      const insertedInbox = receipt
-        ? await reserveInbox(em, receipt, await dbNow(em, wallet))
-        : false;
-      const finish = async (result: WagerResult, idempotentReplay: boolean) => {
-        if (insertedInbox && receipt) await completeInbox(em, receipt);
-        return { result, idempotentReplay };
-      };
-      const recorded = await findExisting(em, cmd);
-      // An already-committed logical request must be ACK-able after a grant
-      // is revoked: it has no new financial effect and Inbox dedup still
-      // verifies the exact message payload before returning its snapshot.
-      if (recorded) return finish(replay(recorded, hash), true);
-      // New commands from either transport require the same grant. Verify it
-      // inside this transaction to close the HTTP pre-check/revocation race.
-      // A failed check also rolls back a newly reserved Inbox atomically.
-      await assertWalletProvider(em, wallet.id, cmd.providerId);
+    return withSpan(
+      'wager.process',
+      {
+        'wager.kind': cmd.kind,
+        'wager.wallet_id': cmd.walletId,
+        'wager.provider_id': cmd.providerId,
+        'messaging.system': receipt ? 'aws.sqs' : 'http',
+      },
+      async () => {
+        const outcome = await this.transaction(async (em) => {
+          // Lock ordering: wallet first, then wager rows. The retry worker uses the same order.
+          const wallet = await lockWallet(em, cmd.walletId);
+          const insertedInbox = receipt
+            ? await reserveInbox(em, receipt, await dbNow(em, wallet))
+            : false;
+          const finish = async (result: WagerResult, idempotentReplay: boolean) => {
+            if (insertedInbox && receipt) await completeInbox(em, receipt);
+            return { result, idempotentReplay };
+          };
+          const recorded = await findExisting(em, cmd);
+          // An already-committed logical request must be ACK-able after a grant
+          // is revoked: it has no new financial effect and Inbox dedup still
+          // verifies the exact message payload before returning its snapshot.
+          if (recorded) return finish(replay(recorded, hash), true);
+          // New commands from either transport require the same grant. Verify it
+          // inside this transaction to close the HTTP pre-check/revocation race.
+          // A failed check also rolls back a newly reserved Inbox atomically.
+          await assertWalletProvider(em, wallet.id, cmd.providerId);
 
-      const at = await dbNow(em, wallet);
-      const tx = WagerTransaction.create({
-        ...cmd,
-        id: randomUUID(),
-        money,
-        payloadHash: hash,
-        createdAt: at,
-      });
+          const at = await dbNow(em, wallet);
+          const tx = WagerTransaction.create({
+            ...cmd,
+            id: randomUUID(),
+            money,
+            payloadHash: hash,
+            createdAt: at,
+          });
 
-      // Cross-kind active compensation must be checked before inserting the
-      // PENDING row, otherwise PostgreSQL would reject the unique active index.
-      const blocked = await activeReversal(em, tx);
-      if (blocked) tx.reject(FailureCode.AlreadyReversed);
-      const inserted = await rows<{ id: string }>(
-        em,
-        `
+          // Cross-kind active compensation must be checked before inserting the
+          // PENDING row, otherwise PostgreSQL would reject the unique active index.
+          const blocked = await activeReversal(em, tx);
+          if (blocked) tx.reject(FailureCode.AlreadyReversed);
+          const inserted = await rows<{ id: string }>(
+            em,
+            `
         insert into wager_transactions(
           id, provider_id, external_transaction_id, idempotency_key, payload_hash,
           wallet_id, player_id, round_id, game_id, kind, amount, currency,
@@ -454,57 +472,74 @@ export class ProcessWager {
           ?::uuid, ?, ?, ?, ?, ?::uuid, ?::uuid, ?, ?, ?, ?::numeric, ?, ?, ?, ?, ?, ?::jsonb
         ) on conflict do nothing returning id
       `,
-        [
-          tx.id,
-          tx.providerId,
-          tx.externalTransactionId,
-          tx.idempotencyKey,
-          tx.payloadHash,
-          tx.walletId,
-          tx.playerId,
-          tx.roundId,
-          tx.gameId,
-          tx.kind,
-          tx.money.toJSON().amount,
-          tx.money.currency,
-          tx.referenceExternalTransactionId ?? null,
-          tx.status,
-          tx.failureCode ?? null,
-          tx.createdAt,
-          blocked ? JSON.stringify(responseSnapshot(tx, wallet, at)) : null,
-        ],
-      );
-      if (inserted.length === 0) {
-        const collided = await findExisting(em, cmd);
-        if (collided) return finish(replay(collided, hash), true);
-        throw new InvalidDomainStateError('Conflicting active financial reversal');
-      }
-      if (blocked) {
-        const snapshot = responseSnapshot(tx, wallet, at);
-        await emitResult(em, tx, wallet, at);
-        return finish(snapshot, false);
-      }
+            [
+              tx.id,
+              tx.providerId,
+              tx.externalTransactionId,
+              tx.idempotencyKey,
+              tx.payloadHash,
+              tx.walletId,
+              tx.playerId,
+              tx.roundId,
+              tx.gameId,
+              tx.kind,
+              tx.money.toJSON().amount,
+              tx.money.currency,
+              tx.referenceExternalTransactionId ?? null,
+              tx.status,
+              tx.failureCode ?? null,
+              tx.createdAt,
+              blocked ? JSON.stringify(responseSnapshot(tx, wallet, at)) : null,
+            ],
+          );
+          if (inserted.length === 0) {
+            const collided = await findExisting(em, cmd);
+            if (collided) return finish(replay(collided, hash), true);
+            throw new InvalidDomainStateError('Conflicting active financial reversal');
+          }
+          if (blocked) {
+            const snapshot = responseSnapshot(tx, wallet, at);
+            await emitResult(em, tx, wallet, at);
+            return finish(snapshot, false);
+          }
 
-      const reference = await findReference(em, tx);
-      const hasActiveReversal = await activeReversal(em, tx);
-      const result = applyWagerRules({
-        wallet,
-        transaction: tx,
-        ...(reference ? { reference } : {}),
-        hasActiveReversal,
-        ledgerEntryId: randomUUID(),
-        at,
-      });
-      const snapshot = await persist(
-        em,
-        tx,
-        wallet,
-        at,
-        result.ledgerEntry,
-        tx.status === Status.PendingReference ? initialReferenceRetry(at) : undefined,
-      );
-      return finish(snapshot, false);
-    });
+          const reference = await findReference(em, tx);
+          const hasActiveReversal = await activeReversal(em, tx);
+          const result = applyWagerRules({
+            wallet,
+            transaction: tx,
+            ...(reference ? { reference } : {}),
+            hasActiveReversal,
+            ledgerEntryId: randomUUID(),
+            at,
+          });
+          const snapshot = await persist(
+            em,
+            tx,
+            wallet,
+            at,
+            result.ledgerEntry,
+            tx.status === Status.PendingReference ? initialReferenceRetry(at) : undefined,
+          );
+          return finish(snapshot, false);
+        });
+        count('wager_transactions_total', {
+          kind: cmd.kind,
+          status: outcome.result.status,
+          transport: receipt ? 'sqs' : 'http',
+          replay: outcome.idempotentReplay,
+        });
+        log('info', 'wager.transaction.committed', {
+          kind: cmd.kind,
+          status: outcome.result.status,
+          transaction_id: outcome.result.transactionId,
+          wallet_id: cmd.walletId,
+          replay: outcome.idempotentReplay,
+          failure_code: outcome.result.failureCode,
+        });
+        return outcome;
+      },
+    );
   }
 
   /** Called by a database-backed scheduler; never reprocesses a terminal row. */
