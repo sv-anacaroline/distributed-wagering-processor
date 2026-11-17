@@ -56,7 +56,7 @@ while time.time() < deadline:
         verified['traces'] = bool(trace.get('traces', []))
     except Exception:
         verified['traces'] = False
-    if all(verified.values()):
+    if verified.get('metrics') and verified.get('logs') and verified.get('traces'):
         # Assert the same W3C trace crossed two independent processes,
         # not merely that Tempo and Loki each received unrelated data.
         def ids_for(message):
