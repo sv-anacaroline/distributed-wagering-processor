@@ -229,6 +229,32 @@ docker compose --profile distributed up --build -d --scale api-replica=2
 Os testes de concorrência comprovam disputa por saldo com três processos Bun
 independentes e PostgreSQL real. Os workers de SQS, retry e Outbox já estão implementados.
 
+## Execução local completa (API, Keycloak e workers)
+
+```bash
+bun run local:up         # sobe PostgreSQL, SQS FIFO, Terraform, IdP e três workers
+bun run local:status     # mostra o estado dos containers
+bun run local:verify     # E2E real com eventos SQS, Outbox, ledger e reconciliação
+bun run local:wallet     # cria carteira e mostra walletId/playerId
+bun run local:event -- BET <walletId> <playerId> 25.00
+bun run local:event -- WIN <walletId> <playerId> 5.00
+bun run local:event -- LOSS <walletId> <playerId> 1.00
+bun run local:event -- REFUND <walletId> <playerId> 25.00 <externalTransactionId-da-BET>
+bun run local:event -- ROLLBACK <walletId> <playerId> 25.00 <externalTransactionId-da-REFUND>
+bun run local:down       # não exclui volumes/dados
+```
+
+A rotina `local:up` é repetível: inicia a infraestrutura, aplica migrations
+**antes** de iniciar os workers e aguarda readiness de PostgreSQL, SQS e IdP.
+O `local:verify` percorre os cinco tipos externos, a abertura interna,
+rejeição, referência pendente fora de ordem e resolução pelo worker. Todos os
+comandos `local:event` geram mensagens SQS FIFO reais; eventos de saída só
+são criados pelo domínio via Transactional Outbox.
+
+**Segurança:** scripts de emissão rejeitam `NODE_ENV=production` e endpoints
+SQS não locais. Não execute `docker compose down -v` em um ambiente com
+dados que queira preservar; `local:down` apenas para os containers.
+
 ## Qualidade de código e testes
 
 Os testes usam apenas Bun 1.x e estão descritos no

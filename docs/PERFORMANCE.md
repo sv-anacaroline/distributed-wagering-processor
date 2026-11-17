@@ -23,7 +23,8 @@ No host não é necessário instalar o k6: executamos
 
 ## Rotina completa e resultados reais
 
-Depois de iniciar o Compose e aplicar migrations, execute
+Depois de inicializar o ambiente com `bun run local:up` e verificar o fluxo
+com `bun run local:verify`, execute
 `bun run test:load:all` para percorrer **os seis cenários**, preservando
 os resultados dos cenários concluídos mesmo quando outro falha. Os artefatos
 `performance/results/*-summary.json`, `benchmark-index.json` e `*.log`

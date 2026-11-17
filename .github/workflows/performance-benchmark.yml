@@ -10,6 +10,9 @@ on:
     paths:
       - .github/workflows/performance-benchmark.yml
       - scripts/run-performance.sh
+      - scripts/local-up.sh
+      - scripts/local-verify.sh
+      - scripts/local-events.ts
       - docker-compose.yml
 
 permissions:
@@ -38,28 +41,12 @@ jobs:
           bun-version: "1.4.4"
       - name: Install frozen dependencies
         run: bun install --frozen-lockfile
-      - name: Start PostgreSQL, SQS and real Keycloak without financial workers
+      - name: Bring up the exact documented local environment
+        run: bash scripts/local-up.sh
+      - name: Validate every SQS wager kind, Outbox publication, ledger and reconciliation
         run: |
-          docker compose --profile full up -d --build postgres aws-emulator terraform-local keycloak
-          docker compose --profile full ps
-      - name: Apply migrations to the fresh SQL database before any worker starts
-        run: docker compose --profile full run --rm --no-deps api bun run db:migrate:up
-      - name: Start real NestJS API and financial workers
-        run: |
-          docker compose --profile full up -d --build api wager-sqs-consumer wager-outbox-publisher reference-retry-worker
-          docker compose --profile full ps
-      - name: Wait for real OIDC and service dependencies
-        run: |
-          for attempt in $(seq 1 90); do
-            if curl -fsS http://localhost:8080/realms/wagering/.well-known/openid-configuration >/dev/null &&
-               curl -fsS http://localhost:3000/health/ready >/dev/null; then
-              echo "PostgreSQL, SQS, API and Keycloak ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          docker compose --profile full ps
-          exit 1
+          mkdir -p performance/results
+          bash scripts/local-verify.sh | tee performance/results/local-events.json
       - name: Measure six k6 scenarios against real authenticated HTTP APIs
         run: bash scripts/run-performance.sh
       - name: Upload complete JSON and logs (independent of test outcome)

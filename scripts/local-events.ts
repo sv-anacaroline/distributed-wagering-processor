@@ -138,7 +138,7 @@ async function waitForTransaction(
       token,
     );
     if (response.status === 200) {
-      if (response.data.status === expectedStatus) return response.data;
+      if (expectedStatus === 'ANY' || response.data.status === expectedStatus) return response.data;
       assert(
         response.data.status === 'PENDING_REFERENCE' && expectedStatus === 'PROCESSED',
         `Wager ${externalId} reached unexpected state ${response.data.status}, wanted ${expectedStatus}`,
@@ -284,21 +284,7 @@ async function main(): Promise<void> {
         process.env.SQS_WAGER_TRANSACTIONS_QUEUE_NAME ?? 'wager-transactions.fifo',
       );
       const sent = await send(sqs, queue, cmd);
-      const state = await waitForTransaction(
-        token,
-        cmd.externalTransactionId,
-        'PROCESSED',
-      ).catch(async (error: unknown) => {
-        // A pending or rejected operation is a business result, not a CLI transport error.
-        const response = await request<Transaction>(
-          `/providers/${providerId}/wagering/transactions/${cmd.externalTransactionId}`,
-          token,
-        );
-        if (response.status === 200 && ['PENDING_REFERENCE', 'REJECTED'].includes(response.data.status)) {
-          return response.data;
-        }
-        throw error;
-      });
+      const state = await waitForTransaction(token, cmd.externalTransactionId, 'ANY');
       console.log(JSON.stringify({ ...sent, kind: cmd.kind, status: state.status, transactionId: state.id }, null, 2));
     } finally {
       sqs.destroy();
