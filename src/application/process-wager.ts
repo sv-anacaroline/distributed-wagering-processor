@@ -14,6 +14,7 @@ import { WagerTransactionRejected } from '../domain/wager-transaction-rejected.j
 import { WagerTransactionPendingReference } from '../domain/wager-transaction-pending-reference.js';
 import { WalletBalanceChanged } from '../domain/wallet-balance-changed.js';
 import { OutboxMessage } from '../domain/outbox-message.js';
+import { InboxMessage } from '../domain/inbox-message.js';
 import type { IntegrationEvent } from '../domain/integration-event.js';
 import { applyWagerRules } from './wager-rules.js';
 import { initialReferenceRetry, nextReferenceRetry } from './reference-retry.js';
@@ -58,6 +59,27 @@ interface WagerRow {
   readonly reference_next_attempt_at: Date | null;
   readonly reference_expires_at: Date | null;
 }
+export interface InboxReceipt {
+  readonly consumerName: string;
+  readonly messageId: string;
+  readonly payloadHash: string;
+}
+
+/** Retriable operational contention, not a permanently invalid business command. */
+export class TransientProcessingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TransientProcessingError';
+  }
+}
+
+export class InboxPayloadConflictError extends Error {
+  constructor() {
+    super('Inbox message identity was redelivered with a different payload');
+    this.name = 'InboxPayloadConflictError';
+  }
+}
+
 interface DueReferenceRow {
   readonly id: string;
   readonly wallet_id: string;
@@ -71,6 +93,42 @@ export class IdempotencyConflictError extends DomainError {
     );
   }
 }
+async function reserveInbox(em: EntityManager, receipt: InboxReceipt, at: Date): Promise<boolean> {
+  const inbox = InboxMessage.receive({
+    consumerName: receipt.consumerName,
+    messageId: receipt.messageId,
+    payloadHash: receipt.payloadHash,
+    receivedAt: at,
+  });
+  const inserted = await rows<{ message_id: string }>(
+    em,
+    `insert into inbox_messages(consumer_name, message_id, payload_hash, received_at)
+     values(?,?,?,?) on conflict do nothing returning message_id`,
+    [inbox.consumerName, inbox.messageId, inbox.payloadHash, inbox.receivedAt],
+  );
+  if (inserted.length > 0) return true;
+  const [stored] = await rows<{ payload_hash: string; processed_at: Date | null }>(
+    em,
+    `select payload_hash, processed_at from inbox_messages
+     where consumer_name=? and message_id=? for update`,
+    [inbox.consumerName, inbox.messageId],
+  );
+  if (!stored) throw new TransientProcessingError('Inbox identity disappeared');
+  if (!inbox.matchesPayload(stored.payload_hash)) throw new InboxPayloadConflictError();
+  if (!stored.processed_at) {
+    throw new TransientProcessingError('Previously reserved inbox message has not committed');
+  }
+  return false;
+}
+
+async function completeInbox(em: EntityManager, receipt: InboxReceipt): Promise<void> {
+  await em.execute(
+    `update inbox_messages set processed_at=greatest(clock_timestamp(),received_at)
+     where consumer_name=? and message_id=? and processed_at is null`,
+    [receipt.consumerName, receipt.messageId],
+  );
+}
+
 function domainWallet(row: WalletRow): Wallet {
   return Wallet.rehydrate({
     id: row.id,
@@ -122,7 +180,7 @@ async function dbNow(em: EntityManager, wallet: Wallet): Promise<Date> {
     'select greatest(clock_timestamp(), ?::timestamptz) as at',
     [wallet.updatedAt],
   );
-  if (!row) throw new InvalidDomainStateError('Database clock unavailable');
+  if (!row) throw new TransientProcessingError('Database clock unavailable');
   return new Date(row.at);
 }
 async function findExisting(em: EntityManager, cmd: WagerCommand): Promise<WagerRow | undefined> {
@@ -238,7 +296,7 @@ async function persist(
       'run',
     );
     if (changes.affectedRows !== 1)
-      throw new InvalidDomainStateError('Concurrent wallet write detected');
+      throw new TransientProcessingError('Concurrent wallet write detected');
     await em.execute(
       `
       insert into wallet_ledger_entries(
@@ -304,13 +362,38 @@ export class ProcessWager {
     result: WagerResult;
     idempotentReplay: boolean;
   }> {
+    return this.processRecorded(cmd);
+  }
+
+  /**
+   * HTTP and SQS share exactly the same financial path. The inbox reservation,
+   * wallet + wager + ledger and integration outbox commit in one SQL transaction.
+   */
+  async processFromInbox(cmd: WagerCommand, receipt: InboxReceipt): Promise<WagerResult> {
+    return (await this.processRecorded(cmd, receipt)).result;
+  }
+
+  private async processRecorded(
+    cmd: WagerCommand,
+    receipt?: InboxReceipt,
+  ): Promise<{
+    result: WagerResult;
+    idempotentReplay: boolean;
+  }> {
     const money = Money.from(cmd.money);
     const hash = payloadHash(cmd);
     return this.transaction(async (em) => {
       // Lock ordering: wallet first, then wager rows. The retry worker uses the same order.
       const wallet = await lockWallet(em, cmd.walletId);
+      const insertedInbox = receipt
+        ? await reserveInbox(em, receipt, await dbNow(em, wallet))
+        : false;
+      const finish = async (result: WagerResult, idempotentReplay: boolean) => {
+        if (insertedInbox && receipt) await completeInbox(em, receipt);
+        return { result, idempotentReplay };
+      };
       const recorded = await findExisting(em, cmd);
-      if (recorded) return { result: replay(recorded, hash), idempotentReplay: true };
+      if (recorded) return finish(replay(recorded, hash), true);
 
       const at = await dbNow(em, wallet);
       const tx = WagerTransaction.create({
@@ -359,13 +442,13 @@ export class ProcessWager {
       );
       if (inserted.length === 0) {
         const collided = await findExisting(em, cmd);
-        if (collided) return { result: replay(collided, hash), idempotentReplay: true };
+        if (collided) return finish(replay(collided, hash), true);
         throw new InvalidDomainStateError('Conflicting active financial reversal');
       }
       if (blocked) {
         const snapshot = responseSnapshot(tx, wallet, at);
         await emitResult(em, tx, wallet, at);
-        return { result: snapshot, idempotentReplay: false };
+        return finish(snapshot, false);
       }
 
       const reference = await findReference(em, tx);
@@ -386,7 +469,7 @@ export class ProcessWager {
         result.ledgerEntry,
         tx.status === Status.PendingReference ? initialReferenceRetry(at) : undefined,
       );
-      return { result: snapshot, idempotentReplay: false };
+      return finish(snapshot, false);
     });
   }
 

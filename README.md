@@ -242,9 +242,29 @@ A configuração para AWS está em `infra/terraform/aws`; o Deployment Kubernete
 
 **Não execute `terraform apply` sem verificar custos e o plano.** O EKS usa três réplicas por padrão, um Service interno, Pod Identity e senha RDS gerenciada pelo Secrets Manager.
 
+## Eventos FIFO + Transactional Outbox (seções 10/11)
+
+O consumidor SQS usa o **mesmo** `ProcessWager` da API. A Inbox,
+o ledger, a transação e a Outbox são confirmados numa única
+transação PostgreSQL; só então a mensagem SQS é reconhecida.
+O publisher entrega envelopes versionados à fila de eventos via
+`FOR UPDATE SKIP LOCKED`/lease/fencing, com agrupamento por wallet.
+
+```bash
+bun run worker:sqs
+bun run worker:outbox
+bun run test:events:e2e
+```
+
+Veja [docs/EVENTS.md](docs/EVENTS.md) para setup MiniStack, contratos,
+retries, DLQ, semântica at-least-once, crash recovery e testes E2E.
+
+**Auth por provider para o canal SQS e ownership das wallets ainda
+serão implementados na entrega final de autenticação.**
+
 ## Limitações atuais
 
-- Modelo e regras de negócio implementados, com transações PostgreSQL e Outbox persistida. **A API está implementada, mas ainda não há integração com consumidores SQS, publisher da Outbox, mapeamentos ORM, autorização de wallet por provedor ou deploy EKS**.
+- Modelo e regras de negócio implementados, com transações PostgreSQL e Outbox persistida. **A API e os workers SQS/Outbox estão implementados, mas ainda faltam autorização de wallet por provedor, validação de identidade das mensagens SQS, mapeamentos ORM ou deploy EKS**.
 - Kubernetes usa `/health/live` e `/health/ready` como probes; configurar OIDC, segredo de cursor e acesso SQS/IAM antes do deploy.
 - Terraform AWS é um exemplo de desenvolvimento com state local; não é um ambiente de produção pronto.
 - Provisionamento real e integração ponta a ponta ainda dependem de validação com Docker, Bun, Terraform e uma conta AWS.

@@ -43,6 +43,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
+      sqs:
+        image: ministackorg/ministack:1.5.40
+        ports:
+          - 4566:4566
+        options: >-
+          --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4566/_ministack/health', timeout=2)\""
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
       postgres:
         image: postgres:17-alpine
         env:
@@ -64,6 +73,11 @@ jobs:
       DB_USER: wagering
       DB_PASSWORD: ci_only_password
       HTTP_AUTH_MODE: disabled
+      EVENTS_E2E: "1"
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      SQS_ENDPOINT_URL: http://127.0.0.1:4566
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
