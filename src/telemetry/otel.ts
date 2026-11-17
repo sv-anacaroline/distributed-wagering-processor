@@ -66,7 +66,8 @@ function active(): boolean {
 }
 /** Never export secrets or raw financial amounts from log or span attributes. */
 export function sanitizedAttributes(values: Attributes): Attributes {
-  const blocked = /(?:^|[._-])(?:authorization|token|password|secret|cookie|api[_-]?key|payload|body|money|amount|balance)(?:$|[._-])/i;
+  const blocked =
+    /(?:^|[._-])(?:authorization|token|password|secret|cookie|api[_-]?key|payload|body|money|amount|balance)(?:$|[._-])/i;
   return Object.fromEntries(Object.entries(values).filter(([key]) => !blocked.test(key)));
 }
 function attributes(values: Attributes = {}): AttributeRecord[] {
@@ -208,7 +209,9 @@ export function log(
     service,
     message,
     ...(ctx ? { trace_id: ctx.traceId, span_id: ctx.spanId } : {}),
-    ...Object.fromEntries(Object.entries(sanitizedAttributes(values)).filter(([, v]) => v !== undefined && v !== null)),
+    ...Object.fromEntries(
+      Object.entries(sanitizedAttributes(values)).filter(([, v]) => v !== undefined && v !== null),
+    ),
   };
   if (
     process.env.OTEL_LOG_STDOUT === 'true' ||

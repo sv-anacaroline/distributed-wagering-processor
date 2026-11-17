@@ -197,7 +197,9 @@ export class OutboxPublisher {
       try {
         await this.runOnce(signal);
       } catch (error: unknown) {
-        console.error('Outbox publish iteration failed; leases will recover', error);
+        log('error', 'outbox.poll.failed', {
+          error_type: error instanceof Error ? error.name : 'UnknownError',
+        });
       }
       try {
         await sleep(intervalMs, undefined, { signal });

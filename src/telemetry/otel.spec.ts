@@ -37,8 +37,12 @@ describe('W3C trace context and privacy invariants', () => {
     const source = startSpan('wager.process');
     const parent = source.run(() => currentTraceparent());
     source.end();
-    const published = await withSpan('outbox.publish', { event_type: 'WalletBalanceChanged' },
-      () => Promise.resolve(currentTraceparent()), parent);
+    const published = await withSpan(
+      'outbox.publish',
+      { event_type: 'WalletBalanceChanged' },
+      () => Promise.resolve(currentTraceparent()),
+      parent,
+    );
     expect(published?.split('-')[1]).toBe(parent?.split('-')[1]);
     expect(published?.split('-')[2]).not.toBe(parent?.split('-')[2]);
   });

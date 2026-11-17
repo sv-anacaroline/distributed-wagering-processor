@@ -250,7 +250,9 @@ export class SqsWagerConsumer {
         await this.runOnce(signal);
       } catch (error: unknown) {
         if (signal.aborted) break;
-        console.error('SQS consumer iteration failed', error);
+        log('error', 'sqs.poll.failed', {
+          error_type: error instanceof Error ? error.name : 'UnknownError',
+        });
         try {
           await sleep(500, undefined, { signal });
         } catch {
