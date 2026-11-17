@@ -15,6 +15,7 @@ import { WalletService } from '../src/http/wallet.service.js';
 import { ProcessWager } from '../src/application/process-wager.js';
 import { OutboxPublisher } from '../src/events/outbox-publisher.js';
 import { SqsWagerConsumer } from '../src/events/sqs-wager-consumer.js';
+import { ReferenceRetryWorker } from '../src/workers/reference-retry-worker.js';
 import type { WagerCommand } from '../src/application/wager-contracts.js';
 import {
   WagerTransactionKind as Kind,
@@ -498,6 +499,74 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
         event.data.transactionId === rejected?.id,
     );
     expect(rejectedBalanceEvents).toHaveLength(0);
+  }, 90_000);
+
+  it('exhausts an out-of-order REFUND reference through the scheduled worker and publishes rejection', async () => {
+    const w = await wallet('0.00');
+    const refund = {
+      ...wager(w, Kind.Refund),
+      referenceExternalTransactionId: 'bet-never-arrived',
+    };
+    const request = envelope(refund);
+    await send(JSON.stringify(request), w.walletId);
+    await consumeOne();
+    const [original] = await orm.em.execute<Array<{ id: string; status: string }>>(
+      `select id,status from wager_transactions
+       where provider_id=? and external_transaction_id=?`,
+      [refund.providerId, refund.externalTransactionId],
+    );
+    expect(original?.status).toBe(Status.PendingReference);
+    if (!original) throw new Error('PENDING_REFERENCE was not committed');
+    await orm.em.execute(
+      `update wager_transactions set
+         reference_next_attempt_at=clock_timestamp()-interval '1 second',
+         reference_expires_at=clock_timestamp()
+       where id=?::uuid`,
+      [original.id],
+    );
+    const worker = new ReferenceRetryWorker(processor);
+    const run = await worker.runOnce();
+    expect(run.scanned).toBeGreaterThanOrEqual(1);
+    expect(run.completed).toBeGreaterThanOrEqual(1);
+    const [finished] = await orm.em.execute<Array<{
+      status: string; failure_code: string;
+    }>>(
+      `select status,failure_code from wager_transactions where id=?::uuid`,
+      [original.id],
+    );
+    expect(finished?.status).toBe(Status.Rejected);
+    expect(finished?.failure_code).toBe('REFERENCE_NOT_FOUND');
+    const [inbox] = await orm.em.execute<Array<{ processed_at: Date | null }>>(
+      `select processed_at from inbox_messages
+       where consumer_name='wager-request-consumer' and message_id=?`,
+      [request.messageId],
+    );
+    expect(inbox?.processed_at).toBeTruthy();
+    const [walletState] = await orm.em.execute<Array<{ balance: string; version: number }>>(
+      'select balance::text as balance,version from wallets where id=?::uuid',
+      [w.walletId],
+    );
+    expect(walletState?.balance).toBe('0.00');
+    expect(walletState?.version).toBe(1);
+    expect(await n(
+      'select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid',
+      [w.walletId],
+    )).toBe(0);
+    const rows = await orm.em.execute<Array<{ event_type: string; published_at: Date | null }>>(
+      `select event_type,published_at from outbox_messages
+       where aggregate_id=?::uuid order by publication_sequence`,
+      [w.walletId],
+    );
+    expect(rows.map(row => row.event_type)).toEqual([
+      'WagerTransactionPendingReference', 'WagerTransactionRejected',
+    ]);
+    expect(rows.every(row => row.published_at === null)).toBe(true);
+    await publishWallet(w.walletId, 2);
+    const delivered = await receiveEvents(w.walletId, 2);
+    expect(delivered.map(event => event.eventType)).toEqual([
+      'WagerTransactionPendingReference', 'WagerTransactionRejected',
+    ]);
+    expect(delivered[1]?.data.failureCode).toBe('REFERENCE_NOT_FOUND');
   }, 90_000);
 
   it('sends malformed JSON to FIFO DLQ and ACKs source, without financial side effects', async () => {
