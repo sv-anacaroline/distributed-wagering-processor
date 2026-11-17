@@ -9,6 +9,32 @@ const processed = new Counter('financial_bets_processed');
 const rejected = new Counter('financial_bets_rejected');
 const replays = new Counter('financial_idempotent_replays');
 const betLatency = new Trend('financial_bet_batch_ms', true);
+const routeNames = [
+  'root',
+  'health-live',
+  'health-ready',
+  'wallet-create',
+  'wager-racing-bet',
+  'wager-bet',
+  'wallet-read',
+  'ledger-read',
+  'reconciliation',
+  'wager-by-id',
+  'wager-by-provider-external-id',
+  'internal-metrics',
+  'hot-wallet-read',
+  'hot-wallet-ledger',
+  'hot-wallet-reconciliation',
+];
+const routeTrends = Object.fromEntries(
+  routeNames.map((route) => [route, new Trend(`financial_route_${route.replace(/-/g, '_')}_ms`, true)]),
+);
+function measured(response, route) {
+  if (response?.timings && typeof response.timings.duration === 'number') {
+    routeTrends[route].add(response.timings.duration);
+  }
+  return response;
+}
 
 const expectedBetStatuses = http.expectedStatuses(200, 422);
 let cachedToken = '';
@@ -118,6 +144,7 @@ export function createFinancialWallet(amount = '100.00') {
     JSON.stringify({ playerId, initialBalance: { amount, currency: 'BRL' } }),
     params('wallet-create'),
   );
+  measured(response, 'wallet-create');
   const wallet = json(response);
   if (response.status !== 201 || !wallet || !wallet.id) {
     fail(`Cannot create a financial wallet: HTTP ${response.status}`);
@@ -140,14 +167,14 @@ export function wagerRequest(wallet, amount = '80.00') {
 }
 
 export function submitBet(command) {
-  return http.post(`${baseUrl}/wagering/transactions`, JSON.stringify(command), {
+  return measured(http.post(`${baseUrl}/wagering/transactions`, JSON.stringify(command), {
     ...params('wager-bet', expectedBetStatuses),
     headers: {
       'Content-Type': 'application/json',
       ...authHeaders(),
       'Idempotency-Key': `${command.providerId}:${command.externalTransactionId}`,
     },
-  });
+  }), 'wager-bet');
 }
 
 export function financialIteration() {
@@ -169,6 +196,7 @@ export function financialIteration() {
   }));
   const start = Date.now();
   const responses = http.batch(requests);
+  for (const response of responses) measured(response, 'wager-racing-bet');
   betLatency.add(Date.now() - start);
   const succeeded = responses.filter((r) => r.status === 200);
   const denied = responses.filter((r) => r.status === 422);
@@ -193,34 +221,45 @@ export function financialIteration() {
     replay?.balance?.amount === win?.balance?.amount;
   if (historicalReplay) replays.add(1);
 
-  const balance = http.get(`${baseUrl}/wallets/${wallet.walletId}`, params('wallet-read'));
-  const ledger = http.get(
-    `${baseUrl}/wallets/${wallet.walletId}/ledger?limit=10`,
-    params('ledger-read'),
+  const balance = measured(
+    http.get(`${baseUrl}/wallets/${wallet.walletId}`, params('wallet-read')),
+    'wallet-read',
   );
-  const recon = http.post(
-    `${baseUrl}/wallets/${wallet.walletId}/reconciliation`,
-    '{}',
-    params('reconciliation'),
+  const ledger = measured(
+    http.get(`${baseUrl}/wallets/${wallet.walletId}/ledger?limit=10`, params('ledger-read')),
+    'ledger-read',
+  );
+  const recon = measured(
+    http.post(`${baseUrl}/wallets/${wallet.walletId}/reconciliation`, '{}', params('reconciliation')),
+    'reconciliation',
   );
   // Exercise every HTTP route, including operational and both read models.
   // Individual endpoint tags give separate p50/p95/p99 distributions in k6.
-  const root = http.get(`${baseUrl}/`, params('root'));
-  const live = http.get(`${baseUrl}/health/live`, params('health-live'));
-  const ready = http.get(`${baseUrl}/health/ready`, params('health-ready'));
+  const root = measured(http.get(`${baseUrl}/`, params('root')), 'root');
+  const live = measured(http.get(`${baseUrl}/health/live`, params('health-live')), 'health-live');
+  const ready = measured(http.get(`${baseUrl}/health/ready`, params('health-ready')), 'health-ready');
   const byId = oneWinner
-    ? http.get(`${baseUrl}/wagering/transactions/${win.transactionId}`, params('wager-by-id'))
-    : null;
-  const byExternal = oneWinner
-    ? http.get(
-        `${baseUrl}/providers/${winningCommand.providerId}/wagering/transactions/${winningCommand.externalTransactionId}`,
-        params('wager-by-provider-external-id'),
+    ? measured(
+        http.get(`${baseUrl}/wagering/transactions/${win.transactionId}`, params('wager-by-id')),
+        'wager-by-id',
       )
     : null;
-  const metrics = http.get(`${baseUrl}/internal/metrics`, {
-    ...params('internal-metrics'),
-    headers: { ...monitorHeaders() },
-  });
+  const byExternal = oneWinner
+    ? measured(
+        http.get(
+          `${baseUrl}/providers/${winningCommand.providerId}/wagering/transactions/${winningCommand.externalTransactionId}`,
+          params('wager-by-provider-external-id'),
+        ),
+        'wager-by-provider-external-id',
+      )
+    : null;
+  const metrics = measured(
+    http.get(`${baseUrl}/internal/metrics`, {
+      ...params('internal-metrics'),
+      headers: { ...monitorHeaders() },
+    }),
+    'internal-metrics',
+  );
   const allRoutes =
     root.status === 200 &&
     live.status === 200 &&
@@ -276,15 +315,21 @@ export function hotWalletBet(wallet) {
 }
 
 export function verifyHotWallet(wallet) {
-  const balance = http.get(`${baseUrl}/wallets/${wallet.walletId}`, params('hot-wallet-read'));
-  const ledger = http.get(
-    `${baseUrl}/wallets/${wallet.walletId}/ledger?limit=10`,
-    params('hot-wallet-ledger'),
+  const balance = measured(
+    http.get(`${baseUrl}/wallets/${wallet.walletId}`, params('hot-wallet-read')),
+    'hot-wallet-read',
   );
-  const recon = http.post(
-    `${baseUrl}/wallets/${wallet.walletId}/reconciliation`,
-    '{}',
-    params('hot-wallet-reconciliation'),
+  const ledger = measured(
+    http.get(`${baseUrl}/wallets/${wallet.walletId}/ledger?limit=10`, params('hot-wallet-ledger')),
+    'hot-wallet-ledger',
+  );
+  const recon = measured(
+    http.post(
+      `${baseUrl}/wallets/${wallet.walletId}/reconciliation`,
+      '{}',
+      params('hot-wallet-reconciliation'),
+    ),
+    'hot-wallet-reconciliation',
   );
   const rows = json(ledger)?.items || [];
   const correct =

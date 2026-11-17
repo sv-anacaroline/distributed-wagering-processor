@@ -31,7 +31,7 @@ export function handleSummary(data) {
     correctness_rate: correctness.rate || 0,
     endpoints: Object.fromEntries(
       Object.entries(data.metrics)
-        .filter(([name]) => name.startsWith('http_req_duration{endpoint:'))
+        .filter(([name]) => name.startsWith('financial_route_') && name.endsWith('_ms'))
         .map(([name, metric]) => [name, metric.values]),
     ),
     // These metrics require application instrumentation, not k6 assumptions.
