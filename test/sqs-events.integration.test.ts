@@ -804,6 +804,82 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     expect(stillPending.every(item => item.published_at === null)).toBe(true);
   }, 90_000);
 
+  it('preserves one successful BET across three SQS consumers and distinct FIFO groups', async () => {
+    const w = await wallet('100.00');
+    const bets = [wager(w, Kind.Bet, '80.00'), wager(w, Kind.Bet, '80.00')];
+    for (const [index, command] of bets.entries()) {
+      // Intentionally use the wrong grouping to verify that PostgreSQL still
+      // owns financial consistency even when producers bypass wallet grouping.
+      await send(JSON.stringify(envelope(command)), w.walletId + ':group-' + index);
+    }
+    const consumers = Array.from({ length: 3 }, () =>
+      new SqsWagerConsumer(
+        sqs, { incoming: sourceUrl, deadLetter: dlqUrl }, new ProcessWager(orm.em),
+      ),
+    );
+    let acknowledged = 0;
+    for (let i = 0; i < 8 && acknowledged < 2; i++) {
+      const outcomes = await Promise.all(consumers.map(instance => instance.runOnce()));
+      for (const status of outcomes.flat()) {
+        expect(status).toBe('ack');
+        acknowledged++;
+      }
+    }
+    expect(acknowledged).toBe(2);
+    await assertSourceAcked();
+    const rows = await orm.em.execute<Array<{
+      external_transaction_id: string; status: string; failure_code: string | null;
+    }>>(
+      `select external_transaction_id,status,failure_code from wager_transactions
+       where provider_id='provider-a' and external_transaction_id in (?,?)`,
+      [bets[0]?.externalTransactionId, bets[1]?.externalTransactionId],
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.filter(row => row.status === Status.Processed)).toHaveLength(1);
+    const refused = rows.filter(row => row.status === Status.Rejected);
+    expect(refused).toHaveLength(1);
+    expect(refused[0]?.failure_code).toBe('INSUFFICIENT_FUNDS');
+    const [stored] = await orm.em.execute<Array<{ balance: string; version: number }>>(
+      'select balance::text as balance,version from wallets where id=?::uuid', [w.walletId],
+    );
+    expect(stored?.balance).toBe('20.00');
+    expect(stored?.version).toBe(2);
+    const [inbox] = await orm.em.execute<Array<{ n: number }>>(
+      `select count(*)::integer as n from inbox_messages
+       where consumer_name='wager-request-consumer'
+         and message_id in (
+           select message_id from inbox_messages
+           where consumer_name='wager-request-consumer'
+             and processed_at is not null
+         ) and received_at > (
+           select created_at from wallets where id=?::uuid
+         )`,
+      [w.walletId],
+    );
+    expect(inbox?.n).toBeGreaterThanOrEqual(2);
+    const ledger = await orm.em.execute<Array<{ direction: string; amount: string }>>(
+      `select direction,amount::text as amount from wallet_ledger_entries
+       where wallet_id=?::uuid and direction='DEBIT'`,
+      [w.walletId],
+    );
+    expect(ledger).toEqual([{ direction: 'DEBIT', amount: '80.00' }]);
+    const output = await orm.em.execute<Array<{ event_type: string }>>(
+      `select event_type from outbox_messages
+       where aggregate_id=?::uuid and payload->>'correlationId' not like 'opening:%'
+       order by publication_sequence`,
+      [w.walletId],
+    );
+    expect(output.map(x => x.event_type).sort()).toEqual([
+      'WalletBalanceChanged', 'WagerTransactionProcessed', 'WagerTransactionRejected',
+    ].sort());
+    await publishWallet(w.walletId, 3);
+    const delivered = await receiveEvents(w.walletId, 3);
+    expect(new Set(delivered.map(item => item.eventId)).size).toBe(3);
+    expect(delivered.filter(item => item.eventType === 'WalletBalanceChanged')).toHaveLength(1);
+    expect(delivered.filter(item => item.eventType === 'WagerTransactionRejected')[0]?.data.failureCode)
+      .toBe('INSUFFICIENT_FUNDS');
+  }, 90_000);
+
   it('cooperates across three publishers without double-claiming a wallet event', async () => {
     const wallets = await Promise.all([wallet(), wallet(), wallet()]);
     for (const w of wallets) await processor.process(wager(w));
