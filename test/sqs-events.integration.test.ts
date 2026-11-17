@@ -452,6 +452,53 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     expect(new Set(sent.map(item => item.eventId)).size).toBe(6);
   }, 90_000);
 
+  it('rejects a ROLLBACK of WIN that would overdraw the wallet without creating ledger entries', async () => {
+    const w = await wallet('0.00');
+    const win = wager(w, Kind.Win);
+    const bet = wager(w, Kind.Bet);
+    const rollback = {
+      ...wager(w, Kind.Rollback),
+      referenceExternalTransactionId: win.externalTransactionId,
+    };
+    for (const command of [win, bet, rollback]) {
+      await send(JSON.stringify(envelope(command)), w.walletId);
+      await consumeOne();
+    }
+    const [rejected] = await orm.em.execute<Array<{ id: string; status: string; failure_code: string }>>(
+      `select status,failure_code from wager_transactions
+       where provider_id=? and external_transaction_id=?`,
+      [rollback.providerId, rollback.externalTransactionId],
+    );
+    expect(rejected?.status).toBe(Status.Rejected);
+    expect(rejected?.failure_code).toBe('REVERSAL_INSUFFICIENT_FUNDS');
+    const [balance] = await orm.em.execute<Array<{ balance: string; version: number }>>(
+      'select balance::text as balance,version from wallets where id=?::uuid',
+      [w.walletId],
+    );
+    expect(balance?.balance).toBe('0.00');
+    expect(balance?.version).toBe(3);
+    const entries = await orm.em.execute<Array<{ direction: string }>>(
+      'select direction from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId],
+    );
+    expect(entries.map(entry => entry.direction).sort()).toEqual(['CREDIT', 'DEBIT']);
+    expect(await outboxCount(w.walletId)).toBe(5);
+    await publishWallet(w.walletId, 5);
+    const delivered = await receiveEvents(w.walletId, 5);
+    expect(delivered.map(event => event.eventType)).toEqual([
+      'WagerTransactionProcessed', 'WalletBalanceChanged',
+      'WagerTransactionProcessed', 'WalletBalanceChanged',
+      'WagerTransactionRejected',
+    ]);
+    expect(delivered[0]?.data.kind).toBe('WIN');
+    expect(delivered[2]?.data.kind).toBe('BET');
+    expect(delivered[4]?.data.failureCode).toBe('REVERSAL_INSUFFICIENT_FUNDS');
+    const rejectedBalanceEvents = delivered.filter(
+      event => event.eventType === 'WalletBalanceChanged' &&
+        event.data.transactionId === rejected?.id,
+    );
+    expect(rejectedBalanceEvents).toHaveLength(0);
+  }, 90_000);
+
   it('sends malformed JSON to FIFO DLQ and ACKs source, without financial side effects', async () => {
     const group = 'poison-' + randomUUID();
     await send('not-json', group);
