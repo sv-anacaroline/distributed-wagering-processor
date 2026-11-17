@@ -377,6 +377,81 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     expect(events.filter((x) => x.eventType === 'WalletBalanceChanged')).toHaveLength(2);
   }, 90_000);
 
+  it('delivers BET, REFUND and ROLLBACK events in causal order with exact balance snapshots', async () => {
+    const w = await wallet('100.00');
+    const bet = wager(w);
+    const refund = {
+      ...wager(w, Kind.Refund),
+      referenceExternalTransactionId: bet.externalTransactionId,
+    };
+    const rollback = {
+      ...wager(w, Kind.Rollback),
+      referenceExternalTransactionId: refund.externalTransactionId,
+    };
+    const steps = [
+      { command: bet, balance: '75.00', direction: 'DEBIT', version: 2 },
+      { command: refund, balance: '100.00', direction: 'CREDIT', version: 3 },
+      { command: rollback, balance: '75.00', direction: 'DEBIT', version: 4 },
+    ];
+    for (const step of steps) {
+      const request = envelope(step.command);
+      await send(JSON.stringify(request), w.walletId);
+      await consumeOne();
+      await assertSourceAcked();
+      const [inbox] = await orm.em.execute<Array<{ processed_at: Date | null }>>(
+        `select processed_at from inbox_messages
+         where consumer_name='wager-request-consumer' and message_id=?`,
+        [request.messageId],
+      );
+      expect(inbox?.processed_at).toBeTruthy();
+      const [transaction] = await orm.em.execute<Array<{ id: string; status: string }>>(
+        `select id,status from wager_transactions
+         where provider_id=? and external_transaction_id=?`,
+        [step.command.providerId, step.command.externalTransactionId],
+      );
+      expect(transaction?.status).toBe(Status.Processed);
+      const [balance] = await orm.em.execute<Array<{ balance: string; version: number }>>(
+        'select balance::text as balance,version from wallets where id=?::uuid',
+        [w.walletId],
+      );
+      expect(balance?.balance).toBe(step.balance);
+      expect(balance?.version).toBe(step.version);
+      const ledger = await orm.em.execute<Array<{ direction: string; balance_after: string }>>(
+        `select direction,balance_after::text as balance_after
+         from wallet_ledger_entries where transaction_id=?::uuid`, [transaction?.id],
+      );
+      expect(ledger).toHaveLength(1);
+      expect(ledger[0]?.direction).toBe(step.direction);
+      expect(ledger[0]?.balance_after).toBe(step.balance);
+      const outputRows = await orm.em.execute<Array<{ event_type: string; published_at: Date | null }>>(
+        `select event_type,published_at from outbox_messages
+         where aggregate_id=?::uuid and payload->>'correlationId'=?
+         order by publication_sequence`,
+        [w.walletId, step.command.idempotencyKey],
+      );
+      expect(outputRows.map(row => row.event_type)).toEqual([
+        'WagerTransactionProcessed', 'WalletBalanceChanged',
+      ]);
+      expect(outputRows.every(row => row.published_at === null)).toBe(true);
+    }
+    await publishWallet(w.walletId, 6);
+    const sent = await receiveEvents(w.walletId, 6);
+    expect(sent.map(item => item.eventType)).toEqual([
+      'WagerTransactionProcessed', 'WalletBalanceChanged',
+      'WagerTransactionProcessed', 'WalletBalanceChanged',
+      'WagerTransactionProcessed', 'WalletBalanceChanged',
+    ]);
+    expect(sent.filter(item => item.eventType === 'WagerTransactionProcessed')
+      .map(item => item.data.kind)).toEqual(['BET', 'REFUND', 'ROLLBACK']);
+    expect(sent.filter(item => item.eventType === 'WalletBalanceChanged')
+      .map(item => item.data.balanceAfter)).toEqual([
+        { amount: '75.00', currency: 'BRL' },
+        { amount: '100.00', currency: 'BRL' },
+        { amount: '75.00', currency: 'BRL' },
+      ]);
+    expect(new Set(sent.map(item => item.eventId)).size).toBe(6);
+  }, 90_000);
+
   it('sends malformed JSON to FIFO DLQ and ACKs source, without financial side effects', async () => {
     const group = 'poison-' + randomUUID();
     await send('not-json', group);
