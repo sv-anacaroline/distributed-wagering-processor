@@ -807,10 +807,11 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
   it('preserves one successful BET across three SQS consumers and distinct FIFO groups', async () => {
     const w = await wallet('100.00');
     const bets = [wager(w, Kind.Bet, '80.00'), wager(w, Kind.Bet, '80.00')];
-    for (const [index, command] of bets.entries()) {
+    const requests = bets.map((command) => envelope(command));
+    for (const [index, request] of requests.entries()) {
       // Intentionally use the wrong grouping to verify that PostgreSQL still
       // owns financial consistency even when producers bypass wallet grouping.
-      await send(JSON.stringify(envelope(command)), w.walletId + ':group-' + index);
+      await send(JSON.stringify(request), w.walletId + ':group-' + index);
     }
     const consumers = Array.from({ length: 3 }, () =>
       new SqsWagerConsumer(
@@ -847,16 +848,10 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     const [inbox] = await orm.em.execute<Array<{ n: number }>>(
       `select count(*)::integer as n from inbox_messages
        where consumer_name='wager-request-consumer'
-         and message_id in (
-           select message_id from inbox_messages
-           where consumer_name='wager-request-consumer'
-             and processed_at is not null
-         ) and received_at > (
-           select created_at from wallets where id=?::uuid
-         )`,
-      [w.walletId],
+         and message_id in (?,?) and processed_at is not null`,
+      [requests[0]?.messageId, requests[1]?.messageId],
     );
-    expect(inbox?.n).toBeGreaterThanOrEqual(2);
+    expect(inbox?.n).toBe(2);
     const ledger = await orm.em.execute<Array<{ direction: string; amount: string }>>(
       `select direction,amount::text as amount from wallet_ledger_entries
        where wallet_id=?::uuid and direction='DEBIT'`,
