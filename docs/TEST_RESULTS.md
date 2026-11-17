@@ -16,10 +16,10 @@ ainda falhava e foi corrigido em commit posterior. Os números abaixo se referem
 | Integração + HTTP E2E (Bun, `test/`) | 83 testes | — | — |
 | Unidade + integração (banco isolado) | 261 testes | 97,36% | 98,42% |
 | Keycloak com tokens reais | Sucesso em job separado | Não incluído no LCOV | Não incluído no LCOV |
-| k6 financeiro | **Não executado nesta CI** | Não aplicável | Não aplicável |
+| k6 financeiro | **6 cenários executados com sucesso em workflow independente** ([run #44005374904](https://github.com/sv-anacaroline/distributed-wagering-processor/actions/runs/44005374904)) | Não aplicável | Não aplicável |
 
 Arquivos e interpretação: [relatório de cobertura](TEST_COVERAGE.md).
-Cenários de k6, metodologia, resultados e status: [relatório de performance](PERFORMANCE_REPORT.md)
+Cenários de k6, metodologia, resultados reais de 17/11/2026 e status: [relatório de performance](PERFORMANCE_REPORT.md)
 e [manual de execução do k6](PERFORMANCE.md).
 
 ## Matriz de cobertura de requisitos
