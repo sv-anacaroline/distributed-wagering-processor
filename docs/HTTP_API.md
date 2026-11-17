@@ -38,14 +38,15 @@ Variáveis obrigatórias no modo seguro:
   emitidos antes da troca deixam de ser aceitos.
 - `HTTP_AUTH_MODE`: `oidc` em produção; `disabled` somente dev/teste.
 
-O IdP deve incluir o claim assinado `provider_id` nas chamadas dos
-endpoints de transações: seu valor deve corresponder ao `providerId`
-do body/URL. O código não confia no ID enviado pelo cliente sozinho.
-Cache de JWKS por 5 minutos é cache de **chaves públicas**, não de
-idempotência financeira. Ainda falta, para uma autorização refinada,
-mapear ownership da wallet para o provedor autenticado; autenticação
-não implica autorização de carteira multi-tenant. Não publicar
-a API externa sem definir essa política conforme o cenário de negócio.
+Keycloak inclui `azp` assinado (authorized party), igual ao client ID.
+Esse valor deve coincidir com `providerId` no body/URL. Se houver claim
+`provider_id`, ele não pode divergir de `azp`. Todos os endpoints
+de wallet/ledger/reconciliation e wagering validam também o
+grant persistente `wallet_provider_grants` antes de retornar dados
+financeiros. O acesso multi-provider exige concessão explícita de
+um operador. `/internal/metrics` exige `wagering-monitor`.
+Cache JWKS por 5 minutos contém só **chaves públicas**, não saldos
+nem dados de idempotência. Ver [AUTH.md](AUTH.md).
 
 ## Endpoints
 
@@ -164,6 +165,8 @@ log estruturado e incrementa o contador persistente consultável em
 
 ```bash
 HTTP_AUTH_MODE=disabled bun run test:api:e2e
+# Com Keycloak local e Postgres migrado, autenticação real:
+bun run test:auth:e2e
 bun run test
 bun run test:e2e
 bun run typecheck

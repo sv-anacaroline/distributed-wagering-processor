@@ -136,6 +136,29 @@ bun run test:concurrency
 Consulte [ARCHITECTURE.md](ARCHITECTURE.md) para as garantias de
 ordenação, os índices utilizados e o diagnóstico de contenção.
 
+## Auth — Keycloak OIDC com isolamento entre providers
+
+O projeto integra **Keycloak** (IdP externo), usando OAuth2
+`client_credentials` para `provider-a`, `provider-b` e
+`wagering-monitor`. A API valida assinatura RS256, `iss`, `aud`
+e `azp` dos access tokens. Não há usuários/senhas locais.
+
+```bash
+cp .env.example .env
+docker compose --profile auth up -d postgres keycloak
+bun run db:migrate:up
+OIDC_JWKS_URL=http://localhost:8080/realms/wagering/protocol/openid-connect/certs bun run start:dev
+```
+
+Os grants `wallet_provider_grants` são criados com a wallet na mesma
+transação SQL. Providers não acessam wallets uns dos outros sem
+concessão explícita; health checks continuam públicos.
+
+**[Instruções de Keycloak, tokens, .env, permissões e E2E](docs/AUTH.md)**
+
+O PR de eventos SQS é independente; a seção 2 considera SQS canal
+interno confiável e preserva as validações de provider no domínio.
+
 ## API REST (Seção 9)
 
 O NestJS expõe `POST /wallets`, consultas de wallet e ledger com cursor
