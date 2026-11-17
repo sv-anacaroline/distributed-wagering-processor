@@ -14,7 +14,10 @@ export function handleSummary(data) {
     timestamp: new Date().toISOString(),
     environment: __ENV.K6_ENVIRONMENT || 'local',
     baseUrl: __ENV.BASE_URL || 'http://api:3000',
-    workload: scenario === 'hot-wallet' ? 'shared wallet across concurrent VUs' : 'financial HTTP BET race, idempotent replay, ledger and reconciliation',
+    workload:
+      scenario === 'hot-wallet'
+        ? 'shared wallet across concurrent VUs'
+        : 'financial HTTP BET race, idempotent replay, ledger and reconciliation',
     requests: requests.count || 0,
     rps: requests.rate || 0,
     p50_ms: latency.med || 0,

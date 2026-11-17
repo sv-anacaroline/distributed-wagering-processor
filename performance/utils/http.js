@@ -25,9 +25,13 @@ export function newId() {
 export function authHeaders() {
   if ((__ENV.K6_AUTH_MODE || 'oidc') === 'disabled') return {};
   if (__ENV.K6_AUTH_TOKEN) return { Authorization: `Bearer ${__ENV.K6_AUTH_TOKEN}` };
-  if (cachedToken && Date.now() < expiresAt) return { Authorization: `Bearer ${cachedToken}` };
+  if (cachedToken && Date.now() < expiresAt) {
+    return { Authorization: `Bearer ${cachedToken}` };
+  }
   if (!__ENV.K6_OIDC_TOKEN_URL || !__ENV.K6_OIDC_CLIENT_ID || !__ENV.K6_OIDC_CLIENT_SECRET) {
-    fail('OIDC load test requires K6_OIDC_TOKEN_URL, CLIENT_ID and CLIENT_SECRET (or K6_AUTH_MODE=disabled)');
+    fail(
+      'OIDC load test requires K6_OIDC_TOKEN_URL, CLIENT_ID and CLIENT_SECRET (or K6_AUTH_MODE=disabled)',
+    );
   }
   const response = http.post(
     __ENV.K6_OIDC_TOKEN_URL,
@@ -187,7 +191,10 @@ export function financialIteration() {
   const correct = oneWinner && historicalReplay && exact;
   correctness.add(correct);
   if (!correct) violations.add(1);
-  check({ correct }, { 'financial race, replay, ledger and reconciliation agree': (v) => v.correct });
+  check(
+    { correct },
+    { 'financial race, replay, ledger and reconciliation agree': (v) => v.correct },
+  );
   sleep(0.15);
 }
 
@@ -204,11 +211,17 @@ export function hotWalletBet(wallet) {
   if (!allowed) violations.add(1);
   if (response.status === 200) processed.add(1);
   if (response.status === 422) rejected.add(1);
-  check({ allowed }, { 'contended bet resolves to exactly one valid business outcome': (v) => v.allowed });
+  check(
+    { allowed },
+    { 'contended bet resolves to exactly one valid business outcome': (v) => v.allowed },
+  );
 }
 
 export function verifyHotWallet(wallet) {
-  const balance = http.get(`${baseUrl}/wallets/${wallet.walletId}`, params('hot-wallet-read'));
+  const balance = http.get(
+    `${baseUrl}/wallets/${wallet.walletId}`,
+    params('hot-wallet-read'),
+  );
   const ledger = http.get(
     `${baseUrl}/wallets/${wallet.walletId}/ledger?limit=10`,
     params('hot-wallet-ledger'),

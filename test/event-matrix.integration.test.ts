@@ -102,7 +102,9 @@ async function assertEventMatrix(ctx: Context, types: string[]): Promise<StoredE
   return all;
 }
 
-describe('real PostgreSQL event contract matrix — transaction, ledger and outbox atomicity', () => {
+describe(
+  'real PostgreSQL event contract matrix — transaction, ledger and outbox atomicity',
+  () => {
   for (const scenario of [
     {
       kind: Kind.Bet,
@@ -123,16 +125,20 @@ describe('real PostgreSQL event contract matrix — transaction, ledger and outb
       types: ['WagerTransactionProcessed'],
     },
   ]) {
-    it(`${scenario.kind} emits only its permitted versioned event types, never before commit`, async () => {
+    it(
+      `${scenario.kind} emits only its permitted versioned event types, never before commit`,
+      async () => {
       const ctx = await wallet();
       const opening = ['WagerTransactionProcessed', 'WalletBalanceChanged'];
-      const command = wager(ctx, scenario.kind);
+      const command = wager(ctx, scenario.kind as Exclude<Kind, Kind.Opening>);
       const result = await processor.process(command);
       expect(result.status).toBe(Status.Processed);
       expect(result.balance.amount).toBe(scenario.balance);
       expect(result.walletVersion).toBe(scenario.direction ? 2 : 1);
       const all = await assertEventMatrix(ctx, [...opening, ...scenario.types]);
-      const logical = all.filter((item) => item.payload.correlationId === command.idempotencyKey);
+      const logical = all.filter(
+        (item) => item.payload.correlationId === command.idempotencyKey,
+      );
       expect(logical.map((item) => item.event_type)).toEqual(scenario.types);
       const processed = logical[0];
       expect(processed?.payload.data.kind).toBe(scenario.kind);
@@ -221,13 +227,17 @@ describe('real PostgreSQL event contract matrix — transaction, ledger and outb
       [duplicate, FailureCode.AlreadyReversed],
       [overdraw, FailureCode.InsufficientFunds],
     ] as const) {
-      const related = all.filter((event) => event.payload.correlationId === command.idempotencyKey);
+      const related = all.filter(
+        (event) => event.payload.correlationId === command.idempotencyKey,
+      );
       expect(related).toHaveLength(1);
       expect(related[0]?.payload.data.failureCode).toBe(failureCode);
     }
   });
 
-  it('PENDING_REFERENCE emits once, then terminal resolution emits processed + balance; replay emits nothing', async () => {
+  it(
+    'PENDING_REFERENCE emits once, then terminal resolution emits processed + balance; replay emits nothing',
+    async () => {
     const ctx = await wallet();
     const bet = wager(ctx, Kind.Bet);
     const refund = wager(ctx, Kind.Refund, '25.00', bet.externalTransactionId);
@@ -258,6 +268,7 @@ describe('real PostgreSQL event contract matrix — transaction, ledger and outb
       'WagerTransactionProcessed',
       'WalletBalanceChanged',
     ]);
+    if (!completed) throw new Error('Reference resolution failed');
     expect(await processor.process(refund)).toEqual(completed);
     await assertEventMatrix(ctx, [
       'WagerTransactionProcessed',
@@ -270,12 +281,15 @@ describe('real PostgreSQL event contract matrix — transaction, ledger and outb
     ]);
   });
 
-  it('expired PENDING_REFERENCE emits a terminal rejection but never WalletBalanceChanged', async () => {
+  it(
+    'expired PENDING_REFERENCE emits a terminal rejection but never WalletBalanceChanged',
+    async () => {
     const ctx = await wallet();
     const refund = wager(ctx, Kind.Refund, '25.00', randomUUID());
     const pending = await processor.process(refund);
     await orm.em.execute(
-      'update wager_transactions set reference_expires_at=clock_timestamp(),reference_next_attempt_at=clock_timestamp() where id=?::uuid',
+      `update wager_transactions set reference_expires_at=clock_timestamp(),
+       reference_next_attempt_at=clock_timestamp() where id=?::uuid`,
       [pending.transactionId],
     );
     const rejected = await processor.retryPending(pending.transactionId, ctx.walletId);
@@ -288,6 +302,7 @@ describe('real PostgreSQL event contract matrix — transaction, ledger and outb
       'WagerTransactionRejected',
     ]);
     expect(all[3]?.payload.data.failureCode).toBe(FailureCode.ReferenceNotFound);
+    if (!rejected) throw new Error('Reference expiry was not finalized');
     expect(await processor.process(refund)).toEqual(rejected);
     expect((await events(ctx.walletId)).length).toBe(all.length);
   });
