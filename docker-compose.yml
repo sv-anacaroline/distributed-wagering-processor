@@ -25,7 +25,7 @@ x-app-env: &app-env
 
 services:
   keycloak:
-    profiles: [auth]
+    profiles: [auth, full]
     image: quay.io/keycloak/keycloak:26.8.2
     command: ["start-dev", "--import-realm", "--hostname=http://localhost:${KEYCLOAK_PORT:-8080}"]
     environment:
@@ -78,7 +78,7 @@ services:
 
   # Optional scheduled DB worker; no SQS, API or outbox publisher involved.
   reference-retry-worker:
-    profiles: [reference-worker]
+    profiles: [reference-worker, full]
     build:
       context: .
       target: development
@@ -95,7 +95,7 @@ services:
 
   # Section 10: SQS FIFO consumer (Inbox+financial SQL commit before ACK).
   wager-sqs-consumer:
-    profiles: [sqs-workers]
+    profiles: [sqs-workers, full]
     build:
       context: .
       target: development
@@ -114,7 +114,7 @@ services:
 
   # Section 11: outbox publisher; can be scaled horizontally.
   wager-outbox-publisher:
-    profiles: [sqs-workers]
+    profiles: [sqs-workers, full]
     build:
       context: .
       target: development
