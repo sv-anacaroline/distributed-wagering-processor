@@ -10,6 +10,7 @@ on:
     paths:
       - .github/workflows/performance-benchmark.yml
       - scripts/run-performance.sh
+      - docker-compose.yml
 
 permissions:
   contents: read
@@ -37,12 +38,16 @@ jobs:
           bun-version: "1.4.4"
       - name: Install frozen dependencies
         run: bun install --frozen-lockfile
-      - name: Build and start live PostgreSQL, FIFO SQS, Keycloak and NestJS
+      - name: Start PostgreSQL, SQS and real Keycloak without financial workers
         run: |
-          docker compose --profile full up -d --build
-          docker compose ps
-      - name: Apply migrations exactly once
-        run: docker compose exec -T api bun run db:migrate:up
+          docker compose --profile full up -d --build postgres aws-emulator terraform-local keycloak
+          docker compose --profile full ps
+      - name: Apply migrations to the fresh SQL database before any worker starts
+        run: docker compose --profile full run --rm --no-deps api bun run db:migrate:up
+      - name: Start real NestJS API and financial workers
+        run: |
+          docker compose --profile full up -d --build api wager-sqs-consumer wager-outbox-publisher reference-retry-worker
+          docker compose --profile full ps
       - name: Wait for real OIDC and service dependencies
         run: |
           for attempt in $(seq 1 90); do

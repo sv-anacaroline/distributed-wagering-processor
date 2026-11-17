@@ -185,12 +185,13 @@ jobs:
       - run:
           name: Start full live service and apply database migrations
           command: |
-            docker compose --profile full up -d --build
+            docker compose --profile full up -d --build postgres aws-emulator terraform-local keycloak
+            docker compose --profile full run --rm --no-deps api bun run db:migrate:up
+            docker compose --profile full up -d --build api wager-sqs-consumer wager-outbox-publisher reference-retry-worker
             for attempt in $(seq 1 90); do
               if curl -fsS http://localhost:8080/realms/wagering/.well-known/openid-configuration > /dev/null; then break; fi
               sleep 2
             done
-            docker compose exec -T api bun run db:migrate:up
             mkdir -p performance/results
       - run:
           name: Run all six financial k6 scenarios outside merge checks
