@@ -92,6 +92,68 @@ jobs:
           bun run db:migrate:down
           bun run db:migrate:up
 
+  auth-idp:
+    name: Keycloak OIDC real-token E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: wagering
+          POSTGRES_USER: wagering
+          POSTGRES_PASSWORD: ci_only_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wagering -d wagering"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: wagering
+      DB_USER: wagering
+      DB_PASSWORD: ci_only_password
+      HTTP_AUTH_MODE: oidc
+      OIDC_ISSUER: http://localhost:8080/realms/wagering
+      OIDC_JWKS_URL: http://localhost:8080/realms/wagering/protocol/openid-connect/certs
+      OIDC_AUDIENCE: wagering-api
+      OIDC_METRICS_CLIENT_ID: wagering-monitor
+      KEYCLOAK_BASE_URL: http://localhost:8080
+      AUTH_E2E: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+      - name: Apply versioned database migrations
+        run: bun run db:migrate:up
+      - name: Start real Keycloak with imported demo realm
+        run: docker compose --profile auth up -d keycloak
+      - name: Wait for Keycloak OIDC discovery
+        run: |
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://localhost:8080/realms/wagering/.well-known/openid-configuration > /dev/null; then
+              echo "Keycloak realm ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose --profile auth logs keycloak
+          exit 1
+      - name: Authenticate two real providers and assert HTTP isolation
+        run: bun run test:auth:e2e
+      - name: Shutdown development IdP
+        if: always()
+        run: docker compose --profile auth down --remove-orphans
+
   k6-config:
     name: Validate k6 scenario configuration
     runs-on: ubuntu-latest
