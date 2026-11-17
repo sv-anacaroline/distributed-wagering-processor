@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { EntityManager } from '@mikro-orm/postgresql';
-import { DomainError, InvalidDomainStateError } from '../domain/errors.js';
+import { DomainError, InvalidDomainStateError, ProviderWalletMismatchError } from '../domain/errors.js';
 import { Money } from '../domain/money.js';
 import { Wallet } from '../domain/wallet.js';
 import {
@@ -167,6 +167,30 @@ function domainWager(row: WagerRow): WagerTransaction {
 async function rows<T>(em: EntityManager, sql: string, values: unknown[] = []): Promise<T[]> {
   return em.execute<T[]>(sql, values, 'all');
 }
+/**
+ * SQS is an internal transport, not a source of provider authorization.
+ * Check the wallet-to-provider grant using the same locked SQL snapshot
+ * as the financial operation. Only explicit non-production auth bypass
+ * permits test fixtures without a configured IdP.
+ */
+async function assertTrustedQueueProvider(
+  em: EntityManager,
+  walletId: string,
+  providerId: string,
+): Promise<void> {
+  if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
+  if (providerId === (process.env.OIDC_METRICS_CLIENT_ID ?? 'wagering-monitor')) {
+    throw new ProviderWalletMismatchError();
+  }
+  const granted = await rows<{ allowed: number }>(
+    em,
+    `select 1 as allowed from wallet_provider_grants
+     where wallet_id=?::uuid and provider_id=? limit 1`,
+    [walletId, providerId],
+  );
+  if (granted.length === 0) throw new ProviderWalletMismatchError();
+}
+
 async function lockWallet(em: EntityManager, walletId: string): Promise<Wallet> {
   const [row] = await rows<WalletRow>(em, 'select * from wallets where id=? for no key update', [
     walletId,
@@ -385,6 +409,9 @@ export class ProcessWager {
     return this.transaction(async (em) => {
       // Lock ordering: wallet first, then wager rows. The retry worker uses the same order.
       const wallet = await lockWallet(em, cmd.walletId);
+      // Verify identity at the business boundary, before reserving Inbox,
+      // so a forged internal envelope never produces financial side effects.
+      if (receipt) await assertTrustedQueueProvider(em, wallet.id, cmd.providerId);
       const insertedInbox = receipt
         ? await reserveInbox(em, receipt, await dbNow(em, wallet))
         : false;

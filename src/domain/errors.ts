@@ -8,7 +8,8 @@ export type DomainErrorCode =
   | 'INVALID_REFERENCE'
   | 'INVALID_DOMAIN_STATE'
   | 'ALREADY_PROCESSED'
-  | 'IDEMPOTENCY_CONFLICT';
+  | 'IDEMPOTENCY_CONFLICT'
+  | 'PROVIDER_WALLET_MISMATCH';
 
 export class DomainError extends Error {
   constructor(
@@ -29,6 +30,13 @@ export class InvalidMoneyError extends DomainError {
 export class CurrencyMismatchError extends DomainError {
   constructor(expected: string, received: string) {
     super('CURRENCY_MISMATCH', `Expected ${expected}, received ${received}`);
+  }
+}
+
+/** A trusted queue envelope still cannot claim another provider's wallet. */
+export class ProviderWalletMismatchError extends DomainError {
+  constructor() {
+    super('PROVIDER_WALLET_MISMATCH', 'Provider is not granted access to this wallet');
   }
 }
 
