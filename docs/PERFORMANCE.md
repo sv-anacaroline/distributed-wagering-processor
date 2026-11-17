@@ -21,6 +21,21 @@ Os segredos do Compose são exclusivamente de **desenvolvimento**.
 No host não é necessário instalar o k6: executamos
 `grafana/k6:1.8.2` em container.
 
+## Rotina completa e resultados reais
+
+Depois de iniciar o Compose e aplicar migrations, execute
+`bun run test:load:all` para percorrer **os seis cenários**, preservando
+os resultados dos cenários concluídos mesmo quando outro falha. Os artefatos
+`performance/results/*-summary.json`, `benchmark-index.json` e `*.log`
+registram os valores medidos.
+
+A rotina independente [GitHub Actions](../.github/workflows/performance-benchmark.yml)
+também pode ser acionada manualmente (`workflow_dispatch`); no branch
+de implementação uma execução de bootstrap é disparada por alterações na
+própria rotina. Ela **não integra a CI obrigatória**, não é status requerido
+e não bloqueia merges. O [CircleCI opcional](../.circleci/config.yml)
+também chama o mesmo `scripts/run-performance.sh` quando explicitamente habilitado.
+
 ## Execução manual, separada do merge
 
 ```bash

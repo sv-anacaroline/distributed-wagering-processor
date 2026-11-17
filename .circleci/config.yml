@@ -193,14 +193,8 @@ jobs:
             docker compose exec -T api bun run db:migrate:up
             mkdir -p performance/results
       - run:
-          name: Run k6 financial scenarios independently of merge checks
-          command: |
-            for scenario in smoke load stress spike soak hot-wallet; do
-              K6_UID=$(id -u) K6_GID=$(id -g) K6_SCENARIO="$scenario" \
-                docker compose -f docker-compose.yml -f docker-compose.k6.yml \
-                --profile performance run --rm -e K6_SCENARIO="$scenario" \
-                k6 run "/scripts/scenarios/$scenario.js"
-            done
+          name: Run all six financial k6 scenarios outside merge checks
+          command: bash scripts/run-performance.sh
       - store_artifacts:
           path: performance/results
           destination: performance-results

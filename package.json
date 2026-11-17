@@ -31,11 +31,11 @@
     "lint:fix": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"performance/**/*.js\" --fix",
     "lint:quick": "oxlint src/ test/ performance/",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"performance/**/*.js\"",
-    "test:load:smoke": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=smoke k6 run /scripts/scenarios/smoke.js",
-    "test:load:load": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=load k6 run /scripts/scenarios/load.js",
-    "test:load:stress": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=stress k6 run /scripts/scenarios/stress.js",
-    "test:load:spike": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=spike k6 run /scripts/scenarios/spike.js",
-    "test:load:soak": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=soak k6 run /scripts/scenarios/soak.js",
+    "test:load:smoke": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=smoke run /scripts/scenarios/smoke.js",
+    "test:load:load": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=load run /scripts/scenarios/load.js",
+    "test:load:stress": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=stress run /scripts/scenarios/stress.js",
+    "test:load:spike": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=spike run /scripts/scenarios/spike.js",
+    "test:load:soak": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=soak run /scripts/scenarios/soak.js",
     "worker:references": "bun src/jobs/retry-references.ts",
     "test:concurrency": "bun test ./test/distributed-concurrency.integration.test.ts ./test/concurrency-locks.integration.test.ts",
     "test:api:e2e": "bun test ./test/http-api.e2e.test.ts",
@@ -45,7 +45,8 @@
     "test:auth:e2e": "AUTH_E2E=1 bun test ./test/auth-keycloak.e2e.test.ts",
     "test:cov:unit": "bun test --coverage ./src",
     "test:cov:full": "bun test --coverage ./src ./test",
-    "test:load:hot-wallet": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=hot-wallet k6 run /scripts/scenarios/hot-wallet.js"
+    "test:load:hot-wallet": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=hot-wallet run /scripts/scenarios/hot-wallet.js",
+    "test:load:all": "bash scripts/run-performance.sh"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
