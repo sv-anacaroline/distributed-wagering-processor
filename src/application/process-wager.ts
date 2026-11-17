@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { EntityManager } from '@mikro-orm/postgresql';
-import { DomainError, InvalidDomainStateError, ProviderWalletMismatchError } from '../domain/errors.js';
+import {
+  DomainError,
+  InvalidDomainStateError,
+  ProviderWalletMismatchError,
+} from '../domain/errors.js';
 import { Money } from '../domain/money.js';
 import { Wallet } from '../domain/wallet.js';
 import {
