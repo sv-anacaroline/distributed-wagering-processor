@@ -1,4 +1,5 @@
 import { MikroORM } from '@mikro-orm/postgresql';
+import { startTelemetry, stopTelemetry, log } from '../telemetry/otel.js';
 import config from '../mikro-orm.config.js';
 import { ProcessWager } from '../application/process-wager.js';
 import { sqsClient, sqsQueueUrl } from '../events/sqs-client.js';
@@ -9,6 +10,8 @@ process.once('SIGTERM', () => termination.abort());
 process.once('SIGINT', () => termination.abort());
 
 async function main(): Promise<void> {
+  startTelemetry('wager-sqs-consumer');
+  log('info', 'worker.started', { worker: 'wager-sqs-consumer' });
   const orm = await MikroORM.init({ ...config, pool: { min: 0, max: 10 } });
   const client = sqsClient();
   try {
@@ -35,9 +38,11 @@ async function main(): Promise<void> {
   } finally {
     client.destroy();
     await orm.close(true);
+    log('info', 'worker.stopped', { worker: 'wager-sqs-consumer' });
+    await stopTelemetry();
   }
 }
 void main().catch((error: unknown) => {
-  console.error('SQS wager worker terminated', error);
+  log('error', 'SQS wager worker terminated', error);
   process.exitCode = 1;
 });

@@ -45,6 +45,7 @@ let dropped = 0;
 const counterStart = epochNanos();
 const counters = new Map<string, { name: string; labels: Attributes; value: number }>();
 const distributions = new Map<string, { name: string; labels: Attributes; count: number; sum: number; bins: number[] }>();
+const gauges = new Map<string, { name: string; labels: Attributes; value: number }>();
 const boundaries = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
 
 function epochNanos(): string {
@@ -123,7 +124,13 @@ export async function withSpan<T>(name: string, values: Attributes, fn: () => Pr
   const span = startSpan(name, values, parent);
   return span.run(async () => {
     try { const result = await fn(); span.end(); return result; }
-    catch (error: unknown) { span.end({}, error); throw error; }
+    catch (error: unknown) {
+      log('error', 'trace.span.failed', {
+        span_name: name, error_type: error instanceof Error ? error.name : 'UnknownError',
+      });
+      span.end({}, error);
+      throw error;
+    }
   });
 }
 
@@ -160,6 +167,12 @@ export function count(name: string, labels: Attributes = {}, amount = 1): void {
   item.value += amount;
   counters.set(key, item);
 }
+/** Latest measured dependency state; unlike counters, gauge values may decrease. */
+export function gauge(name: string, value: number, labels: Attributes = {}): void {
+  if (!active()) return;
+  const key = JSON.stringify([name, Object.entries(labels).sort(([a], [b]) => a.localeCompare(b))]);
+  gauges.set(key, { name, labels, value });
+}
 export function duration(name: string, milliseconds: number, labels: Attributes = {}): void {
   if (!active()) return;
   const key = JSON.stringify([name, Object.entries(labels).sort(([a], [b]) => a.localeCompare(b))]);
@@ -180,6 +193,10 @@ function metricsPayload(): unknown {
           aggregationTemporality: 2, isMonotonic: true,
           dataPoints: [{ attributes: attributes(v.labels), startTimeUnixNano: counterStart, timeUnixNano: now, asInt: String(v.value) }],
         },
+      })),
+      ...[...gauges.values()].map(v => ({
+        name: v.name, unit: '1',
+        gauge: { dataPoints: [{ attributes: attributes(v.labels), timeUnixNano: now, asDouble: v.value }] },
       })),
       ...[...distributions.values()].map(v => ({
         name: v.name, unit: 'ms', histogram: {
