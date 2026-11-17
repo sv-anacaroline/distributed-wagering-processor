@@ -250,7 +250,7 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
     await request(http).get('/health/live').expect(200).expect({ status: 'live' });
     const sqs = new SQSClient({
       region: process.env.AWS_REGION ?? 'us-east-1',
-      endpoint: process.env.SQS_ENDPOINT_URL,
+      ...(process.env.SQS_ENDPOINT_URL ? { endpoint: process.env.SQS_ENDPOINT_URL } : {}),
     });
     try {
       await sqs.send(
