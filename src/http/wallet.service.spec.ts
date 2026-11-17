@@ -75,12 +75,29 @@ describe('wallet opening SQL transaction and ledger adapter', () => {
     const created = await svc.create(playerId, { amount: '1000.00', currency: 'BRL' });
     expect(created.balance.amount).toBe('1000.00');
     expect(created.version).toBe(1);
-    expect(queries).toHaveLength(3);
+    expect(queries).toHaveLength(5);
     expect(queries[0]?.sql).toContain('insert into wallets');
     expect(queries[1]?.sql).toContain('insert into wager_transactions');
     expect(queries[1]?.values).toContain('OPENING');
     expect(queries[2]?.sql).toContain('insert into wallet_ledger_entries');
     expect(queries[2]?.values).toContain('CREDIT');
+    expect(queries[3]?.sql).toContain('insert into outbox_messages');
+    expect(queries[4]?.sql).toContain('insert into outbox_messages');
+    expect(queries[3]?.values).toContain('WagerTransactionProcessed');
+    expect(queries[4]?.values).toContain('WalletBalanceChanged');
+    const processEnvelope = JSON.parse(String(queries[3]?.values[3])) as {
+      eventId: string;
+      eventType: string;
+      version: number;
+    };
+    const balanceEnvelope = JSON.parse(String(queries[4]?.values[3])) as {
+      eventId: string;
+      eventType: string;
+      version: number;
+    };
+    expect(processEnvelope.version).toBe(1);
+    expect(balanceEnvelope.version).toBe(1);
+    expect(balanceEnvelope.eventId).not.toBe(processEnvelope.eventId);
   });
   it('does not create an OPENING transaction for an empty wallet', async () => {
     const statements: string[] = [];

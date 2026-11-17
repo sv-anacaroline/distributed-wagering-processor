@@ -1,6 +1,7 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
 import { DomainError } from '../domain/errors.js';
+import { TransientProcessingError } from '../application/process-wager.js';
 
 function databaseCode(error: unknown): string | undefined {
   let current: unknown = error;
@@ -13,6 +14,13 @@ function databaseCode(error: unknown): string | undefined {
   return undefined;
 }
 export function httpError(error: unknown): { status: number; code: string; message: string } {
+  if (error instanceof TransientProcessingError) {
+    return {
+      status: 503,
+      code: 'INFRASTRUCTURE_UNAVAILABLE',
+      message: 'Temporary processing contention',
+    };
+  }
   if (error instanceof DomainError) {
     if (error.code === 'IDEMPOTENCY_CONFLICT') {
       return { status: 409, code: error.code, message: error.message };

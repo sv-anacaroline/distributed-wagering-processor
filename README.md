@@ -2,7 +2,7 @@
 
 Desafio técnico da Jungle Gaming: processamento financeiro distribuído de apostas, com foco em precisão monetária, idempotência, concorrência e recuperação após falhas.
 
-> **Estado atual:** domínio, regras financeiras, concorrência PostgreSQL e **API REST da seção 9** implementados com testes. O processamento HTTP confirma ledger + Outbox no mesmo commit. **Ainda faltam consumidores/publicadores SQS, autorização multi-tenant refinada, mapeamentos ORM e deploy.** Os health checks são `/health/live` e `/health/ready`, não `GET /`.
+> **Estado atual:** domínio, regras financeiras, concorrência PostgreSQL e **API REST da seção 9** implementados com testes. O processamento HTTP confirma ledger + Outbox no mesmo commit. **Os workers SQS/Outbox e a autenticação HTTP via Keycloak já foram implementados; faltam validações de ambiente de produção, mapeamentos ORM e deploy EKS.** Os health checks são `/health/live` e `/health/ready`, não `GET /`.
 
 ## Stack
 
@@ -265,9 +265,29 @@ A configuração para AWS está em `infra/terraform/aws`; o Deployment Kubernete
 
 **Não execute `terraform apply` sem verificar custos e o plano.** O EKS usa três réplicas por padrão, um Service interno, Pod Identity e senha RDS gerenciada pelo Secrets Manager.
 
+## Eventos FIFO + Transactional Outbox (seções 10/11)
+
+O consumidor SQS usa o **mesmo** `ProcessWager` da API. A Inbox,
+o ledger, a transação e a Outbox são confirmados numa única
+transação PostgreSQL; só então a mensagem SQS é reconhecida.
+O publisher entrega envelopes versionados à fila de eventos via
+`FOR UPDATE SKIP LOCKED`/lease/fencing, com agrupamento por wallet.
+
+```bash
+bun run worker:sqs
+bun run worker:outbox
+bun run test:events:e2e
+```
+
+Veja [docs/EVENTS.md](docs/EVENTS.md) para setup MiniStack, contratos,
+retries, DLQ, semântica at-least-once, crash recovery e testes E2E.
+
+**A autorização de clientes HTTP utiliza grants por wallet. Mensagens SQS são
+tratadas como canal interno confiável, com validações de domínio e proteção da fila via IAM.**
+
 ## Limitações atuais
 
-- Modelo e regras de negócio implementados, com transações PostgreSQL e Outbox persistida. **A API está implementada, mas ainda não há integração com consumidores SQS, publisher da Outbox, mapeamentos ORM, autorização de wallet por provedor ou deploy EKS**.
+- Modelo e regras de negócio implementados, com transações PostgreSQL e Outbox persistida. **A API, workers SQS/Outbox e autorização HTTP de wallet por provider estão implementados; faltam mapeamentos ORM e deploy EKS**.
 - Kubernetes usa `/health/live` e `/health/ready` como probes; configurar OIDC, segredo de cursor e acesso SQS/IAM antes do deploy.
 - Terraform AWS é um exemplo de desenvolvimento com state local; não é um ambiente de produção pronto.
 - Provisionamento real e integração ponta a ponta ainda dependem de validação com Docker, Bun, Terraform e uma conta AWS.

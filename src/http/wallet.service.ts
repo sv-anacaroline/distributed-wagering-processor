@@ -6,6 +6,9 @@ import { Money, type MoneyProps } from '../domain/money.js';
 import { Wallet } from '../domain/wallet.js';
 import { WalletLedgerEntry, LedgerDirection } from '../domain/wallet-ledger-entry.js';
 import { WagerTransaction } from '../domain/wager-transaction.js';
+import { WagerTransactionProcessed } from '../domain/wager-transaction-processed.js';
+import { WalletBalanceChanged } from '../domain/wallet-balance-changed.js';
+import { OutboxMessage } from '../domain/outbox-message.js';
 import { decodeLedgerCursor, encodeLedgerCursor } from './ledger-cursor.js';
 
 interface WalletRow {
@@ -82,8 +85,8 @@ export class WalletService {
           [wallet.id, wallet.playerId, wallet.currency, wallet.balance.toJSON().amount, at, at],
         );
         if (providerId) {
-          // Grant only as part of the wallet opening commit; a failed
-          // ledger/OPENING transaction cannot leave a dangling access grant.
+          // Record access in the SAME transaction as wallet, OPENING,
+          // ledger and both Outbox events. Failures roll back everything.
           await em.execute(
             'insert into wallet_provider_grants(wallet_id,provider_id) values (?::uuid,?)',
             [wallet.id, providerId],
@@ -158,6 +161,31 @@ export class WalletService {
               ledger.createdAt,
             ],
           );
+          // Opening is a real financial movement. Persist both typed events
+          // before commit, in causal order: processed, then balance changed.
+          const context = {
+            correlationId: tx.idempotencyKey,
+            causationId: tx.id,
+            at,
+          };
+          const events = [
+            WagerTransactionProcessed.from(tx, { ...context, eventId: randomUUID() }),
+            WalletBalanceChanged.from(wallet, ledger, { ...context, eventId: randomUUID() }),
+          ];
+          for (const event of events) {
+            const pending = OutboxMessage.enqueue(event);
+            await em.execute(
+              `insert into outbox_messages(id,aggregate_id,event_type,payload,occurred_at,attempts)
+               values (?::uuid,?::uuid,?,?::jsonb,?,0)`,
+              [
+                pending.id,
+                pending.aggregateId,
+                pending.eventType,
+                JSON.stringify(pending.payload),
+                pending.occurredAt,
+              ],
+            );
+          }
         }
         return {
           id: wallet.id,

@@ -8,7 +8,7 @@ financeiras e Outbox em transações PostgreSQL. Testes unitários e de integra�
 com banco real asseguram invariantes, inclusive com três processos Bun
 independentes. Nenhum mecanismo de consistência depende de memória local.
 
-**A API HTTP da seção 9 já expõe consultas e comandos financeiros. Ainda não implementamos consumidores SQS, publisher da Outbox, autorização multi-tenant completa, reconciliação operacional automatizada nem deploy EKS dos workers.**
+**A API HTTP, os workers SQS/Transactional Outbox e a autorização HTTP por provedor via Keycloak já estão implementados. O canal SQS é interno e confiável conforme o enunciado; permanecem pendentes a integração de produção do IdP, reconciliação operacional automatizada e deploy EKS dos workers.**
 A seção 8 valida concorrência por wallet no PostgreSQL, não a entrega em
 ordem dos eventos por SQS.
 
@@ -70,8 +70,8 @@ Leia [docs/AUTH.md](docs/AUTH.md) para configuração do IdP, E2E e EKS.
 - **O modelo em memória não substitui o lock por wallet e a transação SQL**.
   O caso de uso usa `SELECT ... FOR NO KEY UPDATE` por `walletId`, efetua
   movimentações e persiste wallet + ledger + wager + outbox no mesmo commit.
-  Quando o consumidor SQS existir, também deverá persistir Inbox nessa
-  mesma transação e enviar ack somente depois do commit.
+  O consumidor SQS também persiste Inbox nessa mesma transação e envia
+  ACK somente depois do commit.
 - O ledger SQL tem `wallet_version`. O repositório futuro obtém esse valor
   de `Wallet.version` no mesmo caso de uso em que grava o lançamento.
 
@@ -296,10 +296,32 @@ código HTTP, replay, ledger, reconciliação e disputa de saldo.
 
 Detalhes: [docs/HTTP_API.md](docs/HTTP_API.md).
 
+## SQS FIFO + Transactional Outbox — Seções 10/11
+
+O mesmo `ProcessWager` atende HTTP e SQS. Uma mensagem recebida pelo
+consumidor é validada, reservada por `UNIQUE(consumer_name,message_id)`
+e finalizada com `inbox.processed_at` **dentro da transação SQL que
+salva wager, wallet, ledger e outbox**. `DeleteMessage` acontece
+somente depois do commit. Redelivery, vários workers e falha de ACK
+não criam novos movimentos.
+
+O publisher usa `FOR UPDATE SKIP LOCKED`, coluna de sequência
+`publication_sequence` para ordenação causal por wallet mesmo quando
+`occurredAt` coincide, lease de 45s,
+token de fencing, índice parcial por wallet e
+`MessageGroupId=walletId`/`MessageDeduplicationId=eventId`.
+Nenhum SendMessage é feito antes do commit da operação financeira.
+Uma queda após o envio mas antes de gravar `published_at`
+pode gerar nova entrega: os assinantes precisam idempotência durável.
+Revisões de retry/DLQ, SIGTERM e E2E reais no MiniStack são descritas em
+[docs/EVENTS.md](docs/EVENTS.md).
+
+**A seção 2 define a fila como canal interno confiável. O consumer valida o `providerId` do envelope com as invariantes de domínio; a infraestrutura deve restringir a origem via IAM e política SQS.**
+
 ## Próximos passos
 
 1. Autorização de acesso por wallet/tenant com vínculo ao provedor autenticado.
-2. Consumers Inbox/SQS + publisher da Outbox com retries, lease, DLQ e shutdown seguro.
+2. Autorização HTTP por provider aplicada; aprimorar governança de grants e restrição IAM ao produtor SQS.
 3. Adapters ORM e evolução de migrations, sem alterar o domínio financeiro.
 4. Ampliar os testes distribuídos para chaos/rede e execução em pods EKS.
 5. Reconciliação operacional recorrente, métricas externas e alertas.
