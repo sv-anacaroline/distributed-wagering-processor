@@ -14,7 +14,7 @@ for scenario in smoke load stress spike soak hot-wallet; do
   export K6_SCENARIO="$scenario"
   if docker compose -f docker-compose.yml -f docker-compose.k6.yml \
       --profile performance run --rm -e K6_SCENARIO="$scenario" \
-      run "/scripts/scenarios/$scenario.js" \
+      k6 run "/scripts/scenarios/$scenario.js" \
       > "performance/results/$scenario.log" 2>&1; then
     echo "PERF_SCENARIO_EXIT $scenario 0"
   else
