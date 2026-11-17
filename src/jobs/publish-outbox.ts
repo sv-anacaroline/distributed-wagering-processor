@@ -28,6 +28,8 @@ async function main(): Promise<void> {
   }
 }
 void main().catch((error: unknown) => {
-  log('error', 'Outbox publisher terminated', { error_type: error instanceof Error ? error.name : 'UnknownError' });
+  log('error', 'Outbox publisher terminated', {
+    error_type: error instanceof Error ? error.name : 'UnknownError',
+  });
   process.exitCode = 1;
 });

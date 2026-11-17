@@ -30,9 +30,13 @@ export function eventMessage(
   const traceparent = currentTraceparent();
   return new SendMessageCommand({
     QueueUrl: url,
-    ...(traceparent ? { MessageAttributes: {
-      traceparent: { DataType: 'String', StringValue: traceparent },
-    } } : {}),
+    ...(traceparent
+      ? {
+          MessageAttributes: {
+            traceparent: { DataType: 'String', StringValue: traceparent },
+          },
+        }
+      : {}),
     MessageBody: JSON.stringify(event.payload),
     MessageGroupId: event.aggregate_id,
     MessageDeduplicationId: event.id,
@@ -85,69 +89,84 @@ export class OutboxPublisher {
   }
 
   async publish(event: ClaimedEvent): Promise<boolean> {
-    return withSpan('outbox.publish', {
-      'messaging.system': 'aws.sqs', 'messaging.operation.name': 'publish',
-      event_type: event.event_type, event_id: event.id, wallet_id: event.aggregate_id,
-    }, async () => {
-    const startedAt = performance.now();
-    const now = new Date();
-    try {
-      await this.sqs.send(eventMessage(event, this.queueUrl));
-      const state = OutboxMessage.rehydrate({
-        id: event.id,
-        aggregateId: event.aggregate_id,
-        eventType: event.event_type,
-        payload: event.payload,
-        occurredAt: new Date(event.occurred_at),
-        attempts: event.attempts,
-      });
-      state.markPublished(new Date(Math.max(now.getTime(), state.occurredAt.getTime())));
-      const result = await this.em.fork().execute<{ affectedRows?: number }>(
-        `update outbox_messages
+    return withSpan(
+      'outbox.publish',
+      {
+        'messaging.system': 'aws.sqs',
+        'messaging.operation.name': 'publish',
+        event_type: event.event_type,
+        event_id: event.id,
+        wallet_id: event.aggregate_id,
+      },
+      async () => {
+        const startedAt = performance.now();
+        const now = new Date();
+        try {
+          await this.sqs.send(eventMessage(event, this.queueUrl));
+          const state = OutboxMessage.rehydrate({
+            id: event.id,
+            aggregateId: event.aggregate_id,
+            eventType: event.event_type,
+            payload: event.payload,
+            occurredAt: new Date(event.occurred_at),
+            attempts: event.attempts,
+          });
+          state.markPublished(new Date(Math.max(now.getTime(), state.occurredAt.getTime())));
+          const result = await this.em.fork().execute<{ affectedRows?: number }>(
+            `update outbox_messages
          set published_at=greatest(clock_timestamp(),occurred_at),
              claimed_by=null,claim_expires_at=null,next_attempt_at=null
          where id=?::uuid and claimed_by=? and published_at is null
            and claim_expires_at > clock_timestamp()`,
-        [event.id, event.claimToken],
-        'run',
-      );
-      // An expired lease may lead to another publish: consumer eventId dedup
-      // remains the authoritative safety net beyond the SQS 5-minute window.
-      const success = result.affectedRows === 1;
-      count('wager_outbox_publish_total', { event_type: event.event_type, outcome: success ? 'published' : 'fenced' });
-      log(success ? 'info' : 'warn', 'outbox.publish.completed', {
-        event_type: event.event_type, event_id: event.id,
-        wallet_id: event.aggregate_id, outcome: success ? 'published' : 'fenced',
-      });
-      return success;
-    } catch (error: unknown) {
-      const state = OutboxMessage.rehydrate({
-        id: event.id,
-        aggregateId: event.aggregate_id,
-        eventType: event.event_type,
-        payload: event.payload,
-        occurredAt: new Date(event.occurred_at),
-        attempts: event.attempts,
-      });
-      state.scheduleRetry(new Date(Math.max(Date.now(), state.occurredAt.getTime())));
-      await this.em.fork().execute(
-        `update outbox_messages
+            [event.id, event.claimToken],
+            'run',
+          );
+          // An expired lease may lead to another publish: consumer eventId dedup
+          // remains the authoritative safety net beyond the SQS 5-minute window.
+          const success = result.affectedRows === 1;
+          count('wager_outbox_publish_total', {
+            event_type: event.event_type,
+            outcome: success ? 'published' : 'fenced',
+          });
+          log(success ? 'info' : 'warn', 'outbox.publish.completed', {
+            event_type: event.event_type,
+            event_id: event.id,
+            wallet_id: event.aggregate_id,
+            outcome: success ? 'published' : 'fenced',
+          });
+          return success;
+        } catch (error: unknown) {
+          const state = OutboxMessage.rehydrate({
+            id: event.id,
+            aggregateId: event.aggregate_id,
+            eventType: event.event_type,
+            payload: event.payload,
+            occurredAt: new Date(event.occurred_at),
+            attempts: event.attempts,
+          });
+          state.scheduleRetry(new Date(Math.max(Date.now(), state.occurredAt.getTime())));
+          await this.em.fork().execute(
+            `update outbox_messages
          set attempts=?,next_attempt_at=?,claimed_by=null,claim_expires_at=null
          where id=?::uuid and claimed_by=? and published_at is null`,
-        [state.attempts, state.nextAttemptAt, event.id, event.claimToken],
-      );
-      count('wager_outbox_publish_total', { event_type: event.event_type, outcome: 'retry' });
-      log('error', 'outbox.publish.failed', {
-        event_type: event.event_type, event_id: event.id,
-        error_type: error instanceof Error ? error.name : 'UnknownError',
-        attempts: state.attempts,
-      });
-      return false;
-    } finally {
-      duration('wager_outbox_publish_duration_ms', performance.now() - startedAt,
-        { event_type: event.event_type });
-    }
-    }, event.traceparent);
+            [state.attempts, state.nextAttemptAt, event.id, event.claimToken],
+          );
+          count('wager_outbox_publish_total', { event_type: event.event_type, outcome: 'retry' });
+          log('error', 'outbox.publish.failed', {
+            event_type: event.event_type,
+            event_id: event.id,
+            error_type: error instanceof Error ? error.name : 'UnknownError',
+            attempts: state.attempts,
+          });
+          return false;
+        } finally {
+          duration('wager_outbox_publish_duration_ms', performance.now() - startedAt, {
+            event_type: event.event_type,
+          });
+        }
+      },
+      event.traceparent,
+    );
   }
 
   async release(event: ClaimedEvent): Promise<void> {

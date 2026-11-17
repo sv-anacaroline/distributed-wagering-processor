@@ -16,9 +16,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { TelemetryShutdown } from './telemetry/shutdown.js';
 
 @Module({
-  imports: [
-    MikroOrmModule.forRoot(ormConfig),
-  ],
+  imports: [MikroOrmModule.forRoot(ormConfig)],
   controllers: [
     AppController,
     WalletController,

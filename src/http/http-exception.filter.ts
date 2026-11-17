@@ -86,7 +86,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? (original as Record<string, unknown>)
         : null;
     count('wager_http_exceptions_total', {
-      code: error.code, status: String(error.status),
+      code: error.code,
+      status: String(error.status),
     });
     log(error.status >= 500 ? 'error' : 'warn', 'http.exception', {
       code: error.code,

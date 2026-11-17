@@ -189,7 +189,10 @@ export class WalletService {
             );
           }
         }
-        log('info', 'wallet.opening.enqueued', { wallet_id: wallet.id, has_opening: balance.isPositive() });
+        log('info', 'wallet.opening.enqueued', {
+          wallet_id: wallet.id,
+          has_opening: balance.isPositive(),
+        });
         return {
           id: wallet.id,
           playerId: wallet.playerId,

@@ -7,13 +7,15 @@ import { count, duration, log, startSpan, startTelemetry } from './telemetry/ote
 export function httpRoute(method: string, path: string): string {
   const route = path.split('?')[0] ?? '';
   if (route === '/') return '/';
-  if (route === '/health/live' || route === '/health/ready' || route === '/internal/metrics') return route;
+  if (route === '/health/live' || route === '/health/ready' || route === '/internal/metrics')
+    return route;
   if (route === '/wallets') return method === 'POST' ? '/wallets' : 'unknown';
   if (/^\/wallets\/[^/]+\/ledger$/.test(route)) return '/wallets/:walletId/ledger';
   if (/^\/wallets\/[^/]+\/reconciliation$/.test(route)) return '/wallets/:walletId/reconciliation';
   if (/^\/wallets\/[^/]+$/.test(route)) return '/wallets/:walletId';
   if (route === '/wagering/transactions') return route;
-  if (/^\/wagering\/transactions\/[^/]+$/.test(route)) return '/wagering/transactions/:transactionId';
+  if (/^\/wagering\/transactions\/[^/]+$/.test(route))
+    return '/wagering/transactions/:transactionId';
   if (/^\/providers\/[^/]+\/wagering\/transactions\/[^/]+$/.test(route)) {
     return '/providers/:providerId/wagering/transactions/:externalTransactionId';
   }
@@ -25,9 +27,15 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.use((req: Request, res: Response, next: NextFunction) => {
     const route = httpRoute(req.method, req.path);
-    const span = startSpan(`HTTP ${req.method} ${route}`, {
-      'http.request.method': req.method, 'http.route': route,
-    }, req.header('traceparent'), 2);
+    const span = startSpan(
+      `HTTP ${req.method} ${route}`,
+      {
+        'http.request.method': req.method,
+        'http.route': route,
+      },
+      req.header('traceparent'),
+      2,
+    );
     const started = performance.now();
     let ended = false;
     span.run(() => {
@@ -43,8 +51,10 @@ async function bootstrap(): Promise<void> {
         if (status >= 500 || status === 499) count('wager_http_errors_total', labels);
         const fields = { ...labels, duration_ms: Math.round(elapsed * 100) / 100 };
         span.run(() => log(status >= 500 ? 'error' : 'info', 'http.request.completed', fields));
-        span.end({ 'http.response.status_code': status, 'http.server.request.duration_ms': elapsed },
-          status >= 500 ? new Error('HTTP server error') : undefined);
+        span.end(
+          { 'http.response.status_code': status, 'http.server.request.duration_ms': elapsed },
+          status >= 500 ? new Error('HTTP server error') : undefined,
+        );
       };
       res.once('finish', () => end(false));
       res.once('close', () => end(true));

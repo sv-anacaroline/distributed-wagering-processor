@@ -61,8 +61,12 @@ export class HealthService implements OnModuleDestroy {
       gauge('wager_dependency_up', sqs ? 1 : 0, { dependency: 'sqs' });
     }
     if (!postgres || !sqs) {
-      log('error', 'health.ready.failed', { postgres_up: postgres, sqs_up: sqs,
-        postgres_ms: Math.round(postgresMs), sqs_ms: Math.round(sqsMs) });
+      log('error', 'health.ready.failed', {
+        postgres_up: postgres,
+        sqs_up: sqs,
+        postgres_ms: Math.round(postgresMs),
+        sqs_ms: Math.round(sqsMs),
+      });
       throw new ServiceUnavailableException({
         status: 'unavailable',
         postgres: postgres ? 'up' : 'down',
