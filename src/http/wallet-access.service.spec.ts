@@ -28,7 +28,7 @@ describe('provider-to-wallet grants', () => {
       else process.env.HTTP_AUTH_MODE = previousAuth;
     }
   });
-  it('denies missing claims and other provider identities without a grant', async () => {
+  it('denies missing claims and other provider identities without a grant', () => {
     process.env.HTTP_AUTH_MODE = 'oidc';
     try {
       const { service, calls } = check([]);
