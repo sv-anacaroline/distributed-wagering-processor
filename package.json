@@ -46,7 +46,13 @@
     "test:cov:unit": "bun test --coverage ./src",
     "test:cov:full": "bun test --coverage ./src ./test",
     "test:load:hot-wallet": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=hot-wallet k6 run /scripts/scenarios/hot-wallet.js",
-    "test:load:all": "bash scripts/run-performance.sh"
+    "test:load:all": "bash scripts/run-performance.sh",
+    "local:up": "bash scripts/local-up.sh",
+    "local:status": "bash scripts/local-status.sh",
+    "local:verify": "bash scripts/local-verify.sh",
+    "local:wallet": "docker compose --profile full exec -T api bun scripts/local-events.ts wallet",
+    "local:event": "docker compose --profile full exec -T api bun scripts/local-events.ts send",
+    "local:down": "bash scripts/local-down.sh"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
