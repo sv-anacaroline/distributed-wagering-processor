@@ -275,7 +275,9 @@ salva wager, wallet, ledger e outbox**. `DeleteMessage` acontece
 somente depois do commit. Redelivery, vários workers e falha de ACK
 não criam novos movimentos.
 
-O publisher usa `FOR UPDATE SKIP LOCKED`, lease de 45s,
+O publisher usa `FOR UPDATE SKIP LOCKED`, coluna de sequência
+`publication_sequence` para ordenação causal por wallet mesmo quando
+`occurredAt` coincide, lease de 45s,
 token de fencing, índice parcial por wallet e
 `MessageGroupId=walletId`/`MessageDeduplicationId=eventId`.
 Nenhum SendMessage é feito antes do commit da operação financeira.

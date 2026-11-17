@@ -71,9 +71,12 @@ regras de BET/WIN/LOSS/REFUND/ROLLBACK.
   como rede de segurança (`maxReceiveCount=5`).
 - Se o envio à DLQ falhar, **a mensagem original não é deletada**.
   Mantenha alarmes para erro de DLQ e backlog na origem.
-- O worker recebe até 10 mensagens por batch, usa `Promise.allSettled`
-  para esperar todas terminarem e não abandona tarefas parcialmente
-  resolvidas durante o desligamento.
+- O worker recebe até 10 mensagens por batch, agrupando por
+  `MessageGroupId`: cada grupo é processado **serialmente até ACK ou
+  DLQ**, enquanto grupos diferentes avançam em paralelo. Se uma
+  mensagem precisar de retry, as seguintes do grupo têm a visibilidade
+  devolvida sem execução. `Promise.allSettled` espera todos os grupos
+  terminarem antes de sair (inclusive no shutdown).
 - `SIGTERM`/`SIGINT` interrompem novos receives e aguardam as tarefas
   em curso antes de fechar pools. Uma mensagem ainda não iniciada tem
   visibilidade devolvida (0). Em `SIGKILL`, SQS redeliverá quando
@@ -91,6 +94,7 @@ concretas versionadas:
 | `WagerTransactionRejected` | Regra de negócio rejeitada |
 | `WagerTransactionPendingReference` | Referência ausente |
 | `WalletBalanceChanged` | Ledger efetivamente modifica saldo |
+| `WagerTransactionProcessed` + `WalletBalanceChanged` | Também emitidos no `OPENING` interno com saldo positivo, no **mesmo commit SQL** da wallet/ledger |
 
 Os dados carregam somente DTOs imutáveis, incluindo
 `MoneyProps {amount:string,currency:string}`. A Outbox serializa o
@@ -98,12 +102,23 @@ envelope estável `eventId,eventType,aggregateId,correlationId,causationId?,
 occurredAt,version,data`. O banco impede alterar identidade/payload
 de eventos já registrados.
 
+A ordem causal de saída por wallet é garantida por uma coluna
+`publication_sequence bigint GENERATED ALWAYS AS IDENTITY` do
+PostgreSQL. Ela é atribuída aos eventos inseridos sequencialmente
+durante o lock transacional da wallet, inclusive quando ambos possuem
+o mesmo `occurredAt`. Não usar ordenação por UUID para desempatar
+timestamps de eventos causais. A migration
+`Migration20261116235500` troca o índice parcial pelo par
+`(aggregate_id,publication_sequence)`; ao migrar uma instalação
+com backlog anterior, **parar o publisher, migrar e retomar** para
+evitar reenfileiramento fora da ordem histórica.
+
 O publisher obtém eventos via uma única instrução SQL `UPDATE ...
 FROM (SELECT ... FOR UPDATE SKIP LOCKED)`, usando:
 - lease de 45 segundos e `claimed_by` como **token único de tentativa**;
 - token de fencing nas atualizações de ACK/retry, impedindo um worker
   antigo de confirmar a publicação depois de perder a posse;
-- filtro de head-of-line `NOT EXISTS` + índice parcial
+- filtro de head-of-line `NOT EXISTS` por `publication_sequence` + índice parcial
   `outbox_wallet_pending_order_idx`, evitando publicar um evento
   mais recente da mesma wallet antes de um mais antigo;
 - `MessageGroupId=aggregateId` (wallet) e
@@ -144,8 +159,10 @@ EVENTS_E2E=1 SQS_ENDPOINT_URL=http://127.0.0.1:4566 bun run test:events:e2e
 O runner E2E cria filas FIFO temporárias no emulador e as remove ao final.
 Requer credenciais `AWS_ACCESS_KEY_ID=test`,
 `AWS_SECRET_ACCESS_KEY=test`, PostgreSQL migrado, e o serviço MiniStack
-alcançável. Os testes verificam estado SQL, Inbox, ledger, Outbox,
-publicação, corpo entregue, ACK, retries, DLQ, falhas injetadas,
+alcançável. Os testes verificam **cada etapa do fluxo**: Inbox gravada, status da
+transação, saldo/versão, ledger, payload completo na Outbox ainda não
+publicada, ACK da entrada, `published_at` após SQS, envelope recebido
+idêntico ao payload SQL, ordenação de eventos, retries, DLQ, falhas injetadas,
 reprocessamento de referência e múltiplos publishers concorrentes.
 Sem modo `EVENTS_E2E=1`, a suíte que exige SQS real é pulada, mas
 as demais suítes unitárias/PostgreSQL continuam rodando.
