@@ -65,3 +65,12 @@ só podem ser qualificadas após execução medida.
 
 A configuração da CI não demonstra, por si só, que um projeto CircleCI já está
 ativado ou que determinada carga k6 tenha sido executada.
+
+## Telemetria e inspeção de erros
+
+A [dashboard única Grafana](OBSERVABILITY.md) conecta logs OpenTelemetry (Loki),
+traces persistidos na Outbox (Tempo), métricas HTTP/eventos (Prometheus) e
+health checks PostgreSQL/SQS. A integração de traces/logs está em
+`src/telemetry` e `infra/observability`. A validação específica do
+ambiente de observabilidade é descrita no manual e não interfere nos
+resultados financeiros LCOV.
