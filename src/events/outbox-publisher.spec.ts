@@ -63,6 +63,8 @@ describe('transactional outbox publisher', () => {
     expect(await publisher.claim()).toHaveLength(1);
     expect(queries[0]?.sql).toContain('for update of o skip locked');
     expect(queries[0]?.sql).toContain('not exists');
+    expect(queries[0]?.sql).toContain('older.publication_sequence < o.publication_sequence');
+    expect(queries[0]?.sql).toContain('order by o.publication_sequence');
     expect(queries[0]?.sql).toContain('claim_expires_at');
   });
 

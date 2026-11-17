@@ -63,9 +63,9 @@ export class OutboxPublisher {
              select 1 from outbox_messages older
              where older.aggregate_id = o.aggregate_id
                and older.published_at is null
-               and (older.occurred_at,older.id) < (o.occurred_at,o.id)
+               and older.publication_sequence < o.publication_sequence
            )
-         order by o.occurred_at,o.id
+         order by o.publication_sequence
          for update of o skip locked
          limit ?
        )
