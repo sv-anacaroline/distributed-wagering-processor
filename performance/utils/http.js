@@ -140,18 +140,14 @@ export function wagerRequest(wallet, amount = '80.00') {
 }
 
 export function submitBet(command) {
-  return http.post(
-    `${baseUrl}/wagering/transactions`,
-    JSON.stringify(command),
-    {
-      ...params('wager-bet', expectedBetStatuses),
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders(),
-        'Idempotency-Key': `${command.providerId}:${command.externalTransactionId}`,
-      },
+  return http.post(`${baseUrl}/wagering/transactions`, JSON.stringify(command), {
+    ...params('wager-bet', expectedBetStatuses),
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+      'Idempotency-Key': `${command.providerId}:${command.externalTransactionId}`,
     },
-  );
+  });
 }
 
 export function financialIteration() {
@@ -213,10 +209,7 @@ export function financialIteration() {
   const live = http.get(`${baseUrl}/health/live`, params('health-live'));
   const ready = http.get(`${baseUrl}/health/ready`, params('health-ready'));
   const byId = oneWinner
-    ? http.get(
-        `${baseUrl}/wagering/transactions/${win.transactionId}`,
-        params('wager-by-id'),
-      )
+    ? http.get(`${baseUrl}/wagering/transactions/${win.transactionId}`, params('wager-by-id'))
     : null;
   const byExternal = oneWinner
     ? http.get(
@@ -283,10 +276,7 @@ export function hotWalletBet(wallet) {
 }
 
 export function verifyHotWallet(wallet) {
-  const balance = http.get(
-    `${baseUrl}/wallets/${wallet.walletId}`,
-    params('hot-wallet-read'),
-  );
+  const balance = http.get(`${baseUrl}/wallets/${wallet.walletId}`, params('hot-wallet-read'));
   const ledger = http.get(
     `${baseUrl}/wallets/${wallet.walletId}/ledger?limit=10`,
     params('hot-wallet-ledger'),

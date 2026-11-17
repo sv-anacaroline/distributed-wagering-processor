@@ -253,9 +253,7 @@ describe('SQS wager worker delivery policy', () => {
     expect(retryVisibilitySeconds(5)).toBe(16);
   });
   it('DLQs a provider-wallet authorization failure before touching the ledger again', async () => {
-    const { worker, sent } = setup(() =>
-      Promise.reject(new ProviderWalletMismatchError()),
-    );
+    const { worker, sent } = setup(() => Promise.reject(new ProviderWalletMismatchError()));
     expect(await worker.processOne(message())).toBe('dlq');
     expect(sent[0]).toBeInstanceOf(SendMessageCommand);
     expect(sent[1]).toBeInstanceOf(DeleteMessageCommand);

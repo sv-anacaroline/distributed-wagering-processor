@@ -103,9 +103,7 @@ async function assertEventMatrix(ctx: Context, types: string[]): Promise<StoredE
   return all;
 }
 
-describe(
-  'real PostgreSQL event contract matrix — transaction, ledger and outbox atomicity',
-  () => {
+describe('real PostgreSQL event contract matrix — transaction, ledger and outbox atomicity', () => {
   for (const scenario of [
     {
       kind: Kind.Bet,
@@ -126,9 +124,7 @@ describe(
       types: ['WagerTransactionProcessed'],
     },
   ]) {
-    it(
-      `${scenario.kind} emits only its permitted versioned event types, never before commit`,
-      async () => {
+    it(`${scenario.kind} emits only its permitted versioned event types, never before commit`, async () => {
       const ctx = await wallet();
       const opening = ['WagerTransactionProcessed', 'WalletBalanceChanged'];
       const command = wager(ctx, scenario.kind as Exclude<Kind, Kind.Opening>);
@@ -137,9 +133,7 @@ describe(
       expect(result.balance.amount).toBe(scenario.balance);
       expect(result.walletVersion).toBe(scenario.direction ? 2 : 1);
       const all = await assertEventMatrix(ctx, [...opening, ...scenario.types]);
-      const logical = all.filter(
-        (item) => item.payload.correlationId === command.idempotencyKey,
-      );
+      const logical = all.filter((item) => item.payload.correlationId === command.idempotencyKey);
       expect(logical.map((item) => item.event_type)).toEqual(scenario.types);
       const processed = logical[0];
       expect(processed?.payload.data.kind).toBe(scenario.kind);
@@ -228,17 +222,13 @@ describe(
       [duplicate, FailureCode.AlreadyReversed],
       [overdraw, FailureCode.InsufficientFunds],
     ] as const) {
-      const related = all.filter(
-        (event) => event.payload.correlationId === command.idempotencyKey,
-      );
+      const related = all.filter((event) => event.payload.correlationId === command.idempotencyKey);
       expect(related).toHaveLength(1);
       expect(related[0]?.payload.data.failureCode).toBe(failureCode);
     }
   });
 
-  it(
-    'PENDING_REFERENCE emits once, then terminal resolution emits processed + balance; replay emits nothing',
-    async () => {
+  it('PENDING_REFERENCE emits once, then terminal resolution emits processed + balance; replay emits nothing', async () => {
     const ctx = await wallet();
     const bet = wager(ctx, Kind.Bet);
     const refund = wager(ctx, Kind.Refund, '25.00', bet.externalTransactionId);
@@ -247,12 +237,8 @@ describe(
     let related = (await events(ctx.walletId)).filter(
       (event) => event.payload.correlationId === refund.idempotencyKey,
     );
-    expect(related.map((event) => event.event_type)).toEqual([
-      'WagerTransactionPendingReference',
-    ]);
-    expect(related[0]?.payload.data.referenceExternalTransactionId).toBe(
-      bet.externalTransactionId,
-    );
+    expect(related.map((event) => event.event_type)).toEqual(['WagerTransactionPendingReference']);
+    expect(related[0]?.payload.data.referenceExternalTransactionId).toBe(bet.externalTransactionId);
     const reference = await processor.process(bet);
     expect(reference.status).toBe(Status.Processed);
     await orm.em.execute(
@@ -282,9 +268,7 @@ describe(
     ]);
   });
 
-  it(
-    'expired PENDING_REFERENCE emits a terminal rejection but never WalletBalanceChanged',
-    async () => {
+  it('expired PENDING_REFERENCE emits a terminal rejection but never WalletBalanceChanged', async () => {
     const ctx = await wallet();
     const refund = wager(ctx, Kind.Refund, '25.00', randomUUID());
     const pending = await processor.process(refund);
