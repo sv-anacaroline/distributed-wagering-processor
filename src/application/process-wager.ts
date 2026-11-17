@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { withSpan, log, count, currentTraceparent } from '../telemetry/otel.js';
 import type { EntityManager } from '@mikro-orm/postgresql';
 import {
   DomainError,
@@ -266,8 +267,8 @@ async function emit(em: EntityManager, event: IntegrationEvent<unknown>): Promis
   const outbox = OutboxMessage.enqueue(event);
   await em.execute(
     `
-    insert into outbox_messages(id, aggregate_id, event_type, payload, occurred_at, attempts)
-    values (?::uuid, ?::uuid, ?, ?::jsonb, ?, 0)
+    insert into outbox_messages(id, aggregate_id, event_type, payload, occurred_at, attempts, traceparent)
+    values (?::uuid, ?::uuid, ?, ?::jsonb, ?, 0, ?)
   `,
     [
       outbox.id,
@@ -275,8 +276,11 @@ async function emit(em: EntityManager, event: IntegrationEvent<unknown>): Promis
       outbox.eventType,
       JSON.stringify(outbox.payload),
       outbox.occurredAt,
+      currentTraceparent(),
     ],
   );
+  log('info', 'outbox.event.enqueued', { event_type: outbox.eventType, event_id: outbox.id,
+    wallet_id: outbox.aggregateId });
 }
 async function emitResult(
   em: EntityManager,
@@ -377,7 +381,8 @@ export class ProcessWager {
 
   /** Each retry uses a fresh EntityManager + SQL transaction after releasing locks. */
   private async transaction<T>(work: (em: EntityManager) => Promise<T>): Promise<T> {
-    return withTransactionRetry(() => this.em.fork().transactional(work, { clear: true }));
+    return withSpan('postgres.financial.transaction', { 'db.system.name': 'postgresql' },
+      () => withTransactionRetry(() => this.em.fork().transactional(work, { clear: true })));
   }
 
   async process(cmd: WagerCommand): Promise<WagerResult> {
@@ -409,7 +414,11 @@ export class ProcessWager {
   }> {
     const money = Money.from(cmd.money);
     const hash = payloadHash(cmd);
-    return this.transaction(async (em) => {
+    return withSpan('wager.process', {
+      'wager.kind': cmd.kind, 'wager.wallet_id': cmd.walletId,
+      'wager.provider_id': cmd.providerId, 'messaging.system': receipt ? 'aws.sqs' : 'http',
+    }, async () => {
+    const outcome = await this.transaction(async (em) => {
       // Lock ordering: wallet first, then wager rows. The retry worker uses the same order.
       const wallet = await lockWallet(em, cmd.walletId);
       const insertedInbox = receipt
@@ -504,6 +513,15 @@ export class ProcessWager {
         tx.status === Status.PendingReference ? initialReferenceRetry(at) : undefined,
       );
       return finish(snapshot, false);
+    });
+    count('wager_transactions_total', { kind: cmd.kind, status: outcome.result.status,
+      transport: receipt ? 'sqs' : 'http', replay: outcome.idempotentReplay });
+    log('info', 'wager.transaction.committed', {
+      kind: cmd.kind, status: outcome.result.status, transaction_id: outcome.result.transactionId,
+      wallet_id: cmd.walletId, replay: outcome.idempotentReplay,
+      failure_code: outcome.result.failureCode,
+    });
+    return outcome;
     });
   }
 

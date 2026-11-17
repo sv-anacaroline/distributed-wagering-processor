@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { currentTraceparent, log } from '../telemetry/otel.js';
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { EntityManager as CoreEntityManager } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
@@ -175,18 +176,20 @@ export class WalletService {
           for (const event of events) {
             const pending = OutboxMessage.enqueue(event);
             await em.execute(
-              `insert into outbox_messages(id,aggregate_id,event_type,payload,occurred_at,attempts)
-               values (?::uuid,?::uuid,?,?::jsonb,?,0)`,
+              `insert into outbox_messages(id,aggregate_id,event_type,payload,occurred_at,attempts,traceparent)
+               values (?::uuid,?::uuid,?,?::jsonb,?,0,?)`,
               [
                 pending.id,
                 pending.aggregateId,
                 pending.eventType,
                 JSON.stringify(pending.payload),
                 pending.occurredAt,
+                currentTraceparent(),
               ],
             );
           }
         }
+        log('info', 'wallet.opening.enqueued', { wallet_id: wallet.id, has_opening: balance.isPositive() });
         return {
           id: wallet.id,
           playerId: wallet.playerId,
