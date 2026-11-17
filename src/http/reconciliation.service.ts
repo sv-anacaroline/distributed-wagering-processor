@@ -13,6 +13,28 @@ export interface ReconciliationResult {
   readonly consistent: boolean;
   readonly checkedEntries: number;
 }
+/**
+ * Reconciliation is an audit of potentially corrupt data, not an incoming
+ * financial command. A broken ledger may total a negative amount or exceed
+ * the maximum wallet balance; Money.from() correctly rejects those for
+ * commands, so compute *diagnostic* signed amounts with exact bigint cents.
+ */
+function auditCents(value: string): bigint {
+  if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?$/.test(value)) {
+    throw new Error('Invalid exact decimal value returned by reconciliation SQL');
+  }
+  const negative = value.startsWith('-');
+  const [integer = '0', fraction = ''] = (negative ? value.slice(1) : value).split('.');
+  const cents = BigInt(integer) * 100n + BigInt(fraction.padEnd(2, '0'));
+  return negative ? -cents : cents;
+}
+
+function auditAmount(cents: bigint): string {
+  const absolute = cents < 0n ? -cents : cents;
+  const amount = `${absolute / 100n}.${(absolute % 100n).toString().padStart(2, '0')}`;
+  return cents < 0n ? `-${amount}` : amount;
+}
+
 export function reconcileAmounts(
   walletId: string,
   currency: string,
@@ -20,14 +42,15 @@ export function reconcileAmounts(
   calculated: string,
   checkedEntries: number,
 ): ReconciliationResult {
-  const a = Money.from({ amount: stored, currency });
-  const b = Money.from({ amount: calculated, currency });
+  const persisted = Money.from({ amount: stored, currency });
+  const a = auditCents(persisted.toJSON().amount);
+  const b = auditCents(calculated);
   return {
     walletId,
-    storedBalance: a.toJSON(),
-    calculatedBalance: b.toJSON(),
-    difference: a.subtract(b).toJSON(),
-    consistent: a.equals(b),
+    storedBalance: persisted.toJSON(),
+    calculatedBalance: { amount: auditAmount(b), currency },
+    difference: { amount: auditAmount(a - b), currency },
+    consistent: a === b,
     checkedEntries,
   };
 }
@@ -54,7 +77,7 @@ export class ReconciliationService {
         );
         if (!wallet) throw new NotFoundException('Wallet not found');
         const [total] = await em.execute<LedgerTotal[]>(
-          `select coalesce(sum(case when direction='CREDIT' then amount else -amount end),0)::numeric(20,2)::text as calculated,
+          `select coalesce(sum(case when direction='CREDIT' then amount else -amount end),0)::text as calculated,
           count(*)::integer as entries from wallet_ledger_entries where wallet_id=?::uuid`,
           [walletId],
         );
