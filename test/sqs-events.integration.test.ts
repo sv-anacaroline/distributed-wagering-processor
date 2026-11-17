@@ -775,11 +775,12 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       [w.walletId],
     );
     expect(ordered).toHaveLength(2);
-    expect(new Date(ordered[0]?.occurred_at ?? 0).getTime()).toBe(
-      new Date(ordered[1]?.occurred_at ?? 0).getTime(),
+    if (!ordered[0] || !ordered[1]) throw new Error('Missing OPENING events');
+    expect(new Date(ordered[0].occurred_at).getTime()).toBe(
+      new Date(ordered[1].occurred_at).getTime(),
     );
-    expect(BigInt(ordered[0]?.publication_sequence ?? '0')).toBeLessThan(
-      BigInt(ordered[1]?.publication_sequence ?? '0'),
+    expect(BigInt(ordered[0].publication_sequence)).toBeLessThan(
+      BigInt(ordered[1].publication_sequence),
     );
     const agents = [
       new OutboxPublisher(orm.em, sqs, eventsUrl, 'claim-A'),
@@ -789,7 +790,7 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     const batches = await Promise.all(agents.map(agent => agent.claim(50)));
     const claimed = batches.flat();
     const claimsForWallet = claimed.filter(item => item.aggregate_id === w.walletId);
-    expect(claimsForWallet.map(item => item.id)).toEqual([ordered[0]?.id]);
+    expect(claimsForWallet.map(item => item.id)).toEqual([ordered[0].id]);
     const unique = new Set(claimed.map(item => item.id));
     expect(unique.size).toBe(claimed.length);
     for (const [index, agent] of agents.entries()) {
