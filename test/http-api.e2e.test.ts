@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import type { Server } from 'node:http';
+import { CreateQueueCommand, SQSClient } from '@aws-sdk/client-sqs';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -60,6 +60,9 @@ async function submit(
 
 beforeAll(async () => {
   process.env.HTTP_AUTH_MODE = 'disabled'; // Explicit test-only opt-out from the external IdP.
+  process.env.SQS_ENDPOINT_URL ??= 'http://127.0.0.1:4566';
+  process.env.AWS_ACCESS_KEY_ID ??= 'test';
+  process.env.AWS_SECRET_ACCESS_KEY ??= 'test';
   const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = module.createNestApplication();
   await app.init();
@@ -243,25 +246,23 @@ describe('Section 9 REST API — actual PostgreSQL, no async SQS dependency', ()
     expect(page.items.filter((item) => item.direction === 'DEBIT')).toHaveLength(1);
   });
 
-  it('keeps liveness public and reports PostgreSQL + SQS reachability separately', async () => {
+  it('keeps liveness public and confirms authorized SQS queue access', async () => {
     await request(http).get('/health/live').expect(200).expect({ status: 'live' });
-    const original = process.env.SQS_ENDPOINT_URL;
-    const mock = createServer((_req, res) => {
-      res.statusCode = 200;
-      res.end('ok');
+    const sqs = new SQSClient({
+      region: process.env.AWS_REGION ?? 'us-east-1',
+      endpoint: process.env.SQS_ENDPOINT_URL,
     });
-    await new Promise<void>((resolve) => mock.listen(0, '127.0.0.1', resolve));
-    const address = mock.address() as AddressInfo;
-    process.env.SQS_ENDPOINT_URL = `http://127.0.0.1:${address.port}`;
     try {
+      await sqs.send(
+        new CreateQueueCommand({
+          QueueName: 'wager-transactions.fifo',
+          Attributes: { FifoQueue: 'true' },
+        }),
+      );
       const response = await request(http).get('/health/ready').expect(200);
       expect(response.body).toEqual({ status: 'ready', postgres: 'up', sqs: 'up' });
     } finally {
-      await new Promise<void>((resolve, reject) =>
-        mock.close((error) => (error ? reject(error) : resolve())),
-      );
-      if (original === undefined) delete process.env.SQS_ENDPOINT_URL;
-      else process.env.SQS_ENDPOINT_URL = original;
+      sqs.destroy();
     }
   });
 });
