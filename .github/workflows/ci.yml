@@ -37,6 +37,15 @@ jobs:
       - name: Verify formatting
         if: success() || failure()
         run: bun run format:check
+      - name: Export exact Keycloak Prettier output (temporary)
+        if: always()
+        run: |
+          bunx --bun prettier --write src/http/oidc.guard.ts src/http/oidc.guard.spec.ts src/http/wallet-access.service.ts src/http/wallet-access.service.spec.ts src/http/wallet.controller.ts src/http/wallet.service.ts src/http/wallet.service.spec.ts src/http/wager.controller.ts src/http/metrics.controller.ts test/auth-keycloak.e2e.test.ts test/wallet-provider-grants.integration.test.ts
+          for file in src/http/oidc.guard.ts src/http/oidc.guard.spec.ts src/http/wallet-access.service.ts src/http/wallet-access.service.spec.ts src/http/wallet.controller.ts src/http/wallet.service.ts src/http/wallet.service.spec.ts src/http/wager.controller.ts src/http/metrics.controller.ts test/auth-keycloak.e2e.test.ts test/wallet-provider-grants.integration.test.ts; do
+            echo "__BEGINFILE__${file}"
+            base64 -w 120 "$file" | sed 's/^/__FILECHUNK__/'
+            echo "__ENDFILE__${file}"
+          done
 
   quality:
     name: Unit, E2E, coverage and PostgreSQL
