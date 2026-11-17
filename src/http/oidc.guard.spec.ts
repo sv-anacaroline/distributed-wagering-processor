@@ -22,6 +22,7 @@ function token(override: Record<string, unknown> = {}): string {
       sub: 'user1',
       exp: 4_000_000_000,
       provider_id: 'provider-a',
+      azp: 'provider-a',
       ...override,
     }),
   ).toString('base64url');
@@ -41,6 +42,12 @@ describe('OIDC JWT verification', () => {
     );
   it('accepts RS256 signatures and verified provider claims', () => {
     expect(verify(token()).provider_id).toBe('provider-a');
+  });
+  it('rejects unsigned provider impersonation and mismatched authorized-party claims', () => {
+    expect(() => verify(token({ azp: 'provider-b' }))).toThrow(UnauthorizedException);
+    expect(() => verify(token({ provider_id: 'provider-b' }))).toThrow(UnauthorizedException);
+    expect(() => verify(token({ azp: null }))).toThrow(UnauthorizedException);
+    expect(verify(token({ provider_id: undefined })).azp).toBe('provider-a');
   });
   it('rejects missing or invalid signatures', () => {
     expect(() => verify('bad-token')).toThrow(UnauthorizedException);
