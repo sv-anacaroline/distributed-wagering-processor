@@ -89,9 +89,14 @@ jobs:
             cp coverage/lcov.info artifacts/coverage/unit/lcov.info
             bun scripts/coverage-report.ts unit artifacts/coverage/unit/lcov.info artifacts/coverage/unit/report.md
       - run:
+          name: Build a fresh isolated PostgreSQL schema for combined coverage
+          command: |
+            bun scripts/prepare-coverage-db.ts
+            DB_NAME=wagering_coverage bun run db:migrate:up
+      - run:
           name: Combined unit and real integration coverage (mandatory gate)
           command: |
-            bun run test:cov:full
+            DB_NAME=wagering_coverage bun run test:cov:full
             mkdir -p artifacts/coverage/integrated
             cp coverage/lcov.info artifacts/coverage/integrated/lcov.info
             bun scripts/coverage-report.ts integrated artifacts/coverage/integrated/lcov.info artifacts/coverage/integrated/report.md --enforce

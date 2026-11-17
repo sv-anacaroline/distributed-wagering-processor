@@ -99,9 +99,13 @@ jobs:
           mkdir -p artifacts/coverage/unit
           cp coverage/lcov.info artifacts/coverage/unit/lcov.info
           bun scripts/coverage-report.ts unit artifacts/coverage/unit/lcov.info artifacts/coverage/unit/report.md
+      - name: Fresh isolated PostgreSQL for deterministic combined coverage
+        run: |
+          bun scripts/prepare-coverage-db.ts
+          DB_NAME=wagering_coverage bun run db:migrate:up
       - name: Combined unit, E2E and integration coverage
         run: |
-          bun run test:cov:full
+          DB_NAME=wagering_coverage bun run test:cov:full
           mkdir -p artifacts/coverage/integrated
           cp coverage/lcov.info artifacts/coverage/integrated/lcov.info
           bun scripts/coverage-report.ts integrated artifacts/coverage/integrated/lcov.info artifacts/coverage/integrated/report.md --enforce
