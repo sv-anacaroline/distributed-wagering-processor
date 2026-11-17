@@ -86,10 +86,14 @@ describe('wallet opening SQL transaction and ledger adapter', () => {
     expect(queries[3]?.values).toContain('WagerTransactionProcessed');
     expect(queries[4]?.values).toContain('WalletBalanceChanged');
     const processEnvelope = JSON.parse(String(queries[3]?.values[3])) as {
-      eventId: string; eventType: string; version: number;
+      eventId: string;
+      eventType: string;
+      version: number;
     };
     const balanceEnvelope = JSON.parse(String(queries[4]?.values[3])) as {
-      eventId: string; eventType: string; version: number;
+      eventId: string;
+      eventType: string;
+      version: number;
     };
     expect(processEnvelope.version).toBe(1);
     expect(balanceEnvelope.version).toBe(1);

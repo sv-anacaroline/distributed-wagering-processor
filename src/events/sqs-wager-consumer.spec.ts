@@ -193,7 +193,9 @@ describe('SQS wager worker delivery policy', () => {
   it('does not start the next FIFO delivery of the same group until the first is acknowledged', async () => {
     let release!: () => void;
     let calls = 0;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const { worker, sent } = setup(async () => {
       calls++;
       if (calls === 1) await gate;
@@ -206,13 +208,15 @@ describe('SQS wager worker delivery policy', () => {
     release();
     expect(await run).toEqual(['ack', 'ack']);
     expect(calls).toBe(2);
-    expect(sent.filter(cmd => cmd instanceof DeleteMessageCommand)).toHaveLength(2);
+    expect(sent.filter((cmd) => cmd instanceof DeleteMessageCommand)).toHaveLength(2);
   });
 
   it('allows independent FIFO groups to advance while another group is blocked', async () => {
     let release!: () => void;
     let started = 0;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const { worker } = setup(async () => {
       started++;
       if (started === 1) await gate;

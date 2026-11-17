@@ -169,8 +169,11 @@ export class SqsWagerConsumer {
         for (const { message, index } of entries) {
           if (blocked) {
             if (message.ReceiptHandle) {
-              try { await this.release(message.ReceiptHandle); }
-              catch (error: unknown) { errors.push(error); }
+              try {
+                await this.release(message.ReceiptHandle);
+              } catch (error: unknown) {
+                errors.push(error);
+              }
             }
             outcomes[index] = 'released';
             continue;

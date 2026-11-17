@@ -138,13 +138,12 @@ async function verifyDeliveredEvent(event: Published): Promise<void> {
   expect(event.correlationId).toBeTruthy();
   expect(event.version).toBe(1);
   expect(new Date(event.occurredAt).toISOString()).toBe(event.occurredAt);
-  const [saved] = await orm.em.execute<Array<{
-    payload: Published;
-    published_at: Date | null;
-  }>>(
-    `select payload,published_at from outbox_messages where id=?::uuid`,
-    [event.eventId],
-  );
+  const [saved] = await orm.em.execute<
+    Array<{
+      payload: Published;
+      published_at: Date | null;
+    }>
+  >(`select payload,published_at from outbox_messages where id=?::uuid`, [event.eventId]);
   // E2E proof: every SQS delivery matches exactly what was committed
   // and marked published in PostgreSQL after the broker accepted it.
   if (!saved) throw new Error('SQS event was not persisted in Outbox');
@@ -153,13 +152,21 @@ async function verifyDeliveredEvent(event: Published): Promise<void> {
 }
 
 async function assertSourceAcked(): Promise<void> {
-  const afterAck = await sqs.send(new ReceiveMessageCommand({
-    QueueUrl: sourceUrl, MaxNumberOfMessages: 1, WaitTimeSeconds: 1,
-  }));
+  const afterAck = await sqs.send(
+    new ReceiveMessageCommand({
+      QueueUrl: sourceUrl,
+      MaxNumberOfMessages: 1,
+      WaitTimeSeconds: 1,
+    }),
+  );
   expect(afterAck.Messages ?? []).toHaveLength(0);
 }
 
-async function receiveEvents(walletId: string, expected: number, includeOpening = false): Promise<Published[]> {
+async function receiveEvents(
+  walletId: string,
+  expected: number,
+  includeOpening = false,
+): Promise<Published[]> {
   const found: Published[] = [];
   for (let i = deferredEvents.length - 1; i >= 0; i--) {
     const item = deferredEvents[i];
@@ -229,16 +236,19 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
 
   it('publishes OPENING and WalletBalanceChanged in causal SQL/FIFO order', async () => {
     const w = await wallet('100.00');
-    const rows = await orm.em.execute<Array<{
-      publication_sequence: string;
-      event_type: string;
-    }>>(
+    const rows = await orm.em.execute<
+      Array<{
+        publication_sequence: string;
+        event_type: string;
+      }>
+    >(
       `select publication_sequence::text as publication_sequence,event_type
        from outbox_messages where aggregate_id=?::uuid order by publication_sequence`,
       [w.walletId],
     );
-    expect(rows.map(row => row.event_type)).toEqual([
-      'WagerTransactionProcessed', 'WalletBalanceChanged',
+    expect(rows.map((row) => row.event_type)).toEqual([
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
     ]);
     expect(BigInt(rows[0]?.publication_sequence ?? '0')).toBeLessThan(
       BigInt(rows[1]?.publication_sequence ?? '0'),
@@ -247,13 +257,15 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       await publisher.runOnce();
       const [status] = await orm.em.execute<Array<{ n: number }>>(
         `select count(*)::integer as n from outbox_messages
-         where aggregate_id=?::uuid and published_at is not null`, [w.walletId],
+         where aggregate_id=?::uuid and published_at is not null`,
+        [w.walletId],
       );
       if (status?.n === 2) break;
     }
     const received = await receiveEvents(w.walletId, 2, true);
-    expect(received.map(item => item.eventType)).toEqual([
-      'WagerTransactionProcessed', 'WalletBalanceChanged',
+    expect(received.map((item) => item.eventType)).toEqual([
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
     ]);
     expect(received[0]?.data.kind).toBe('OPENING');
     expect(received[1]?.data.balanceAfter).toEqual({ amount: '100.00', currency: 'BRL' });
@@ -420,38 +432,51 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       expect(balance?.version).toBe(step.version);
       const ledger = await orm.em.execute<Array<{ direction: string; balance_after: string }>>(
         `select direction,balance_after::text as balance_after
-         from wallet_ledger_entries where transaction_id=?::uuid`, [transaction?.id],
+         from wallet_ledger_entries where transaction_id=?::uuid`,
+        [transaction?.id],
       );
       expect(ledger).toHaveLength(1);
       expect(ledger[0]?.direction).toBe(step.direction);
       expect(ledger[0]?.balance_after).toBe(step.balance);
-      const outputRows = await orm.em.execute<Array<{ event_type: string; published_at: Date | null }>>(
+      const outputRows = await orm.em.execute<
+        Array<{ event_type: string; published_at: Date | null }>
+      >(
         `select event_type,published_at from outbox_messages
          where aggregate_id=?::uuid and payload->>'correlationId'=?
          order by publication_sequence`,
         [w.walletId, step.command.idempotencyKey],
       );
-      expect(outputRows.map(row => row.event_type)).toEqual([
-        'WagerTransactionProcessed', 'WalletBalanceChanged',
+      expect(outputRows.map((row) => row.event_type)).toEqual([
+        'WagerTransactionProcessed',
+        'WalletBalanceChanged',
       ]);
-      expect(outputRows.every(row => row.published_at === null)).toBe(true);
+      expect(outputRows.every((row) => row.published_at === null)).toBe(true);
     }
     await publishWallet(w.walletId, 6);
     const sent = await receiveEvents(w.walletId, 6);
-    expect(sent.map(item => item.eventType)).toEqual([
-      'WagerTransactionProcessed', 'WalletBalanceChanged',
-      'WagerTransactionProcessed', 'WalletBalanceChanged',
-      'WagerTransactionProcessed', 'WalletBalanceChanged',
+    expect(sent.map((item) => item.eventType)).toEqual([
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
     ]);
-    expect(sent.filter(item => item.eventType === 'WagerTransactionProcessed')
-      .map(item => item.data.kind)).toEqual(['BET', 'REFUND', 'ROLLBACK']);
-    expect(sent.filter(item => item.eventType === 'WalletBalanceChanged')
-      .map(item => item.data.balanceAfter)).toEqual([
-        { amount: '75.00', currency: 'BRL' },
-        { amount: '100.00', currency: 'BRL' },
-        { amount: '75.00', currency: 'BRL' },
-      ]);
-    expect(new Set(sent.map(item => item.eventId)).size).toBe(6);
+    expect(
+      sent
+        .filter((item) => item.eventType === 'WagerTransactionProcessed')
+        .map((item) => item.data.kind),
+    ).toEqual(['BET', 'REFUND', 'ROLLBACK']);
+    expect(
+      sent
+        .filter((item) => item.eventType === 'WalletBalanceChanged')
+        .map((item) => item.data.balanceAfter),
+    ).toEqual([
+      { amount: '75.00', currency: 'BRL' },
+      { amount: '100.00', currency: 'BRL' },
+      { amount: '75.00', currency: 'BRL' },
+    ]);
+    expect(new Set(sent.map((item) => item.eventId)).size).toBe(6);
   }, 90_000);
 
   it('rejects a ROLLBACK of WIN that would overdraw the wallet without creating ledger entries', async () => {
@@ -466,7 +491,9 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       await send(JSON.stringify(envelope(command)), w.walletId);
       await consumeOne();
     }
-    const [rejected] = await orm.em.execute<Array<{ id: string; status: string; failure_code: string }>>(
+    const [rejected] = await orm.em.execute<
+      Array<{ id: string; status: string; failure_code: string }>
+    >(
       `select status,failure_code from wager_transactions
        where provider_id=? and external_transaction_id=?`,
       [rollback.providerId, rollback.externalTransactionId],
@@ -480,23 +507,26 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     expect(balance?.balance).toBe('0.00');
     expect(balance?.version).toBe(3);
     const entries = await orm.em.execute<Array<{ direction: string }>>(
-      'select direction from wallet_ledger_entries where wallet_id=?::uuid', [w.walletId],
+      'select direction from wallet_ledger_entries where wallet_id=?::uuid',
+      [w.walletId],
     );
-    expect(entries.map(entry => entry.direction).sort()).toEqual(['CREDIT', 'DEBIT']);
+    expect(entries.map((entry) => entry.direction).sort()).toEqual(['CREDIT', 'DEBIT']);
     expect(await outboxCount(w.walletId)).toBe(5);
     await publishWallet(w.walletId, 5);
     const delivered = await receiveEvents(w.walletId, 5);
-    expect(delivered.map(event => event.eventType)).toEqual([
-      'WagerTransactionProcessed', 'WalletBalanceChanged',
-      'WagerTransactionProcessed', 'WalletBalanceChanged',
+    expect(delivered.map((event) => event.eventType)).toEqual([
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
       'WagerTransactionRejected',
     ]);
     expect(delivered[0]?.data.kind).toBe('WIN');
     expect(delivered[2]?.data.kind).toBe('BET');
     expect(delivered[4]?.data.failureCode).toBe('REVERSAL_INSUFFICIENT_FUNDS');
     const rejectedBalanceEvents = delivered.filter(
-      event => event.eventType === 'WalletBalanceChanged' &&
-        event.data.transactionId === rejected?.id,
+      (event) =>
+        event.eventType === 'WalletBalanceChanged' && event.data.transactionId === rejected?.id,
     );
     expect(rejectedBalanceEvents).toHaveLength(0);
   }, 90_000);
@@ -528,12 +558,12 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     const run = await worker.runOnce();
     expect(run.scanned).toBeGreaterThanOrEqual(1);
     expect(run.completed).toBeGreaterThanOrEqual(1);
-    const [finished] = await orm.em.execute<Array<{
-      status: string; failure_code: string;
-    }>>(
-      `select status,failure_code from wager_transactions where id=?::uuid`,
-      [original.id],
-    );
+    const [finished] = await orm.em.execute<
+      Array<{
+        status: string;
+        failure_code: string;
+      }>
+    >(`select status,failure_code from wager_transactions where id=?::uuid`, [original.id]);
     expect(finished?.status).toBe(Status.Rejected);
     expect(finished?.failure_code).toBe('REFERENCE_NOT_FOUND');
     const [inbox] = await orm.em.execute<Array<{ processed_at: Date | null }>>(
@@ -548,23 +578,26 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     );
     expect(walletState?.balance).toBe('0.00');
     expect(walletState?.version).toBe(1);
-    expect(await n(
-      'select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid',
-      [w.walletId],
-    )).toBe(0);
+    expect(
+      await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [
+        w.walletId,
+      ]),
+    ).toBe(0);
     const rows = await orm.em.execute<Array<{ event_type: string; published_at: Date | null }>>(
       `select event_type,published_at from outbox_messages
        where aggregate_id=?::uuid order by publication_sequence`,
       [w.walletId],
     );
-    expect(rows.map(row => row.event_type)).toEqual([
-      'WagerTransactionPendingReference', 'WagerTransactionRejected',
+    expect(rows.map((row) => row.event_type)).toEqual([
+      'WagerTransactionPendingReference',
+      'WagerTransactionRejected',
     ]);
-    expect(rows.every(row => row.published_at === null)).toBe(true);
+    expect(rows.every((row) => row.published_at === null)).toBe(true);
     await publishWallet(w.walletId, 2);
     const delivered = await receiveEvents(w.walletId, 2);
-    expect(delivered.map(event => event.eventType)).toEqual([
-      'WagerTransactionPendingReference', 'WagerTransactionRejected',
+    expect(delivered.map((event) => event.eventType)).toEqual([
+      'WagerTransactionPendingReference',
+      'WagerTransactionRejected',
     ]);
     expect(delivered[1]?.data.failureCode).toBe('REFERENCE_NOT_FOUND');
   }, 90_000);
@@ -592,17 +625,22 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     const originalBody = JSON.stringify(req);
     await send(originalBody, w.walletId);
     const unavailable = new SqsWagerConsumer(
-      sqs, { incoming: sourceUrl, deadLetter: dlqUrl },
+      sqs,
+      { incoming: sourceUrl, deadLetter: dlqUrl },
       {
         processFromInbox: () => Promise.reject(new Error('simulated PostgreSQL outage')),
       },
     );
     for (let attempt = 1; attempt <= 5; attempt++) {
-      const received = await sqs.send(new ReceiveMessageCommand({
-        QueueUrl: sourceUrl, MaxNumberOfMessages: 1, WaitTimeSeconds: 1,
-        VisibilityTimeout: 60,
-        MessageSystemAttributeNames: ['ApproximateReceiveCount'],
-      }));
+      const received = await sqs.send(
+        new ReceiveMessageCommand({
+          QueueUrl: sourceUrl,
+          MaxNumberOfMessages: 1,
+          WaitTimeSeconds: 1,
+          VisibilityTimeout: 60,
+          MessageSystemAttributeNames: ['ApproximateReceiveCount'],
+        }),
+      );
       const delivery = received.Messages?.[0];
       if (!delivery?.ReceiptHandle) throw new Error('Message disappeared before retry ' + attempt);
       expect(delivery.Attributes?.ApproximateReceiveCount).toBe(String(attempt));
@@ -610,16 +648,24 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       expect(outcome).toBe(attempt === 5 ? 'dlq' : 'retry');
       if (attempt < 5) {
         // Advance the broker's retry visibility explicitly, avoiding timing sleeps.
-        await sqs.send(new ChangeMessageVisibilityCommand({
-          QueueUrl: sourceUrl, ReceiptHandle: delivery.ReceiptHandle, VisibilityTimeout: 0,
-        }));
+        await sqs.send(
+          new ChangeMessageVisibilityCommand({
+            QueueUrl: sourceUrl,
+            ReceiptHandle: delivery.ReceiptHandle,
+            VisibilityTimeout: 0,
+          }),
+        );
       }
     }
     await assertSourceAcked();
-    const dead = await sqs.send(new ReceiveMessageCommand({
-      QueueUrl: dlqUrl, MaxNumberOfMessages: 1, WaitTimeSeconds: 1,
-      MessageAttributeNames: ['All'],
-    }));
+    const dead = await sqs.send(
+      new ReceiveMessageCommand({
+        QueueUrl: dlqUrl,
+        MaxNumberOfMessages: 1,
+        WaitTimeSeconds: 1,
+        MessageAttributeNames: ['All'],
+      }),
+    );
     const poison = dead.Messages?.[0];
     expect(poison?.Body).toBe(originalBody);
     expect(poison?.MessageAttributes?.failureKind?.StringValue).toBe('RETRIES_EXHAUSTED');
@@ -628,7 +674,8 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     await sqs.send(new DeleteMessageCommand({ QueueUrl: dlqUrl, ReceiptHandle: handle }));
     const [inbox] = await orm.em.execute<Array<{ n: number }>>(
       `select count(*)::integer as n from inbox_messages
-       where consumer_name='wager-request-consumer' and message_id=?`, [req.messageId],
+       where consumer_name='wager-request-consumer' and message_id=?`,
+      [req.messageId],
     );
     expect(inbox?.n).toBe(0);
     const [transaction] = await orm.em.execute<Array<{ n: number }>>(
@@ -638,12 +685,14 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     );
     expect(transaction?.n).toBe(0);
     expect(await outboxCount(w.walletId)).toBe(0);
-    expect(await n(
-      'select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid',
-      [w.walletId],
-    )).toBe(0);
+    expect(
+      await n('select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid', [
+        w.walletId,
+      ]),
+    ).toBe(0);
     const [balance] = await orm.em.execute<Array<{ balance: string; version: number }>>(
-      'select balance::text as balance,version from wallets where id=?::uuid', [w.walletId],
+      'select balance::text as balance,version from wallets where id=?::uuid',
+      [w.walletId],
     );
     expect(balance?.balance).toBe('0.00');
     expect(balance?.version).toBe(1);
@@ -828,11 +877,13 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
 
   it('claims only the oldest event per wallet across three concurrent publishers', async () => {
     const w = await wallet();
-    const ordered = await orm.em.execute<Array<{
-      id: string;
-      occurred_at: Date;
-      publication_sequence: string;
-    }>>(
+    const ordered = await orm.em.execute<
+      Array<{
+        id: string;
+        occurred_at: Date;
+        publication_sequence: string;
+      }>
+    >(
       `select id,occurred_at,publication_sequence::text as publication_sequence
        from outbox_messages where aggregate_id=?::uuid order by publication_sequence`,
       [w.walletId],
@@ -850,11 +901,11 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       new OutboxPublisher(orm.em, sqs, eventsUrl, 'claim-B'),
       new OutboxPublisher(orm.em, sqs, eventsUrl, 'claim-C'),
     ];
-    const batches = await Promise.all(agents.map(agent => agent.claim(50)));
+    const batches = await Promise.all(agents.map((agent) => agent.claim(50)));
     const claimed = batches.flat();
-    const claimsForWallet = claimed.filter(item => item.aggregate_id === w.walletId);
-    expect(claimsForWallet.map(item => item.id)).toEqual([ordered[0].id]);
-    const unique = new Set(claimed.map(item => item.id));
+    const claimsForWallet = claimed.filter((item) => item.aggregate_id === w.walletId);
+    expect(claimsForWallet.map((item) => item.id)).toEqual([ordered[0].id]);
+    const unique = new Set(claimed.map((item) => item.id));
     expect(unique.size).toBe(claimed.length);
     for (const [index, agent] of agents.entries()) {
       for (const item of batches[index] ?? []) await agent.release(item);
@@ -862,10 +913,11 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     expect(await outboxCount(w.walletId)).toBe(0);
     const stillPending = await orm.em.execute<Array<{ published_at: Date | null }>>(
       `select published_at from outbox_messages
-       where aggregate_id=?::uuid order by publication_sequence`, [w.walletId],
+       where aggregate_id=?::uuid order by publication_sequence`,
+      [w.walletId],
     );
     expect(stillPending).toHaveLength(2);
-    expect(stillPending.every(item => item.published_at === null)).toBe(true);
+    expect(stillPending.every((item) => item.published_at === null)).toBe(true);
   }, 90_000);
 
   it('preserves one successful BET across three SQS consumers and distinct FIFO groups', async () => {
@@ -877,14 +929,18 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       // owns financial consistency even when producers bypass wallet grouping.
       await send(JSON.stringify(request), w.walletId + ':group-' + index);
     }
-    const consumers = Array.from({ length: 3 }, () =>
-      new SqsWagerConsumer(
-        sqs, { incoming: sourceUrl, deadLetter: dlqUrl }, new ProcessWager(orm.em),
-      ),
+    const consumers = Array.from(
+      { length: 3 },
+      () =>
+        new SqsWagerConsumer(
+          sqs,
+          { incoming: sourceUrl, deadLetter: dlqUrl },
+          new ProcessWager(orm.em),
+        ),
     );
     let acknowledged = 0;
     for (let i = 0; i < 8 && acknowledged < 2; i++) {
-      const outcomes = await Promise.all(consumers.map(instance => instance.runOnce()));
+      const outcomes = await Promise.all(consumers.map((instance) => instance.runOnce()));
       for (const status of outcomes.flat()) {
         expect(status).toBe('ack');
         acknowledged++;
@@ -892,20 +948,25 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     }
     expect(acknowledged).toBe(2);
     await assertSourceAcked();
-    const rows = await orm.em.execute<Array<{
-      external_transaction_id: string; status: string; failure_code: string | null;
-    }>>(
+    const rows = await orm.em.execute<
+      Array<{
+        external_transaction_id: string;
+        status: string;
+        failure_code: string | null;
+      }>
+    >(
       `select external_transaction_id,status,failure_code from wager_transactions
        where provider_id='provider-a' and external_transaction_id in (?,?)`,
       [bets[0]?.externalTransactionId, bets[1]?.externalTransactionId],
     );
     expect(rows).toHaveLength(2);
-    expect(rows.filter(row => row.status === 'PROCESSED')).toHaveLength(1);
-    const refused = rows.filter(row => row.status === 'REJECTED');
+    expect(rows.filter((row) => row.status === 'PROCESSED')).toHaveLength(1);
+    const refused = rows.filter((row) => row.status === 'REJECTED');
     expect(refused).toHaveLength(1);
     expect(refused[0]?.failure_code).toBe('INSUFFICIENT_FUNDS');
     const [stored] = await orm.em.execute<Array<{ balance: string; version: number }>>(
-      'select balance::text as balance,version from wallets where id=?::uuid', [w.walletId],
+      'select balance::text as balance,version from wallets where id=?::uuid',
+      [w.walletId],
     );
     expect(stored?.balance).toBe('20.00');
     expect(stored?.version).toBe(2);
@@ -928,15 +989,17 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
        order by publication_sequence`,
       [w.walletId],
     );
-    expect(output.map(x => x.event_type).sort()).toEqual([
-      'WalletBalanceChanged', 'WagerTransactionProcessed', 'WagerTransactionRejected',
-    ].sort());
+    expect(output.map((x) => x.event_type).sort()).toEqual(
+      ['WalletBalanceChanged', 'WagerTransactionProcessed', 'WagerTransactionRejected'].sort(),
+    );
     await publishWallet(w.walletId, 3);
     const delivered = await receiveEvents(w.walletId, 3);
-    expect(new Set(delivered.map(item => item.eventId)).size).toBe(3);
-    expect(delivered.filter(item => item.eventType === 'WalletBalanceChanged')).toHaveLength(1);
-    expect(delivered.filter(item => item.eventType === 'WagerTransactionRejected')[0]?.data.failureCode)
-      .toBe('INSUFFICIENT_FUNDS');
+    expect(new Set(delivered.map((item) => item.eventId)).size).toBe(3);
+    expect(delivered.filter((item) => item.eventType === 'WalletBalanceChanged')).toHaveLength(1);
+    expect(
+      delivered.filter((item) => item.eventType === 'WagerTransactionRejected')[0]?.data
+        .failureCode,
+    ).toBe('INSUFFICIENT_FUNDS');
   }, 90_000);
 
   it('cooperates across three publishers without double-claiming a wallet event', async () => {

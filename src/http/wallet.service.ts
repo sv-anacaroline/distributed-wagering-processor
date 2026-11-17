@@ -166,8 +166,11 @@ export class WalletService {
               `insert into outbox_messages(id,aggregate_id,event_type,payload,occurred_at,attempts)
                values (?::uuid,?::uuid,?,?::jsonb,?,0)`,
               [
-                pending.id, pending.aggregateId, pending.eventType,
-                JSON.stringify(pending.payload), pending.occurredAt,
+                pending.id,
+                pending.aggregateId,
+                pending.eventType,
+                JSON.stringify(pending.payload),
+                pending.occurredAt,
               ],
             );
           }
