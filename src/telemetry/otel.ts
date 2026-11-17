@@ -64,8 +64,13 @@ function epochNanos(): string {
 function active(): boolean {
   return process.env.OTEL_ENABLED === 'true';
 }
+/** Never export secrets or raw financial amounts from log or span attributes. */
+export function sanitizedAttributes(values: Attributes): Attributes {
+  const blocked = /(?:^|[._-])(?:authorization|token|password|secret|cookie|api[_-]?key|payload|body|money|amount|balance)(?:$|[._-])/i;
+  return Object.fromEntries(Object.entries(values).filter(([key]) => !blocked.test(key)));
+}
 function attributes(values: Attributes = {}): AttributeRecord[] {
-  return Object.entries(values)
+  return Object.entries(sanitizedAttributes(values))
     .filter(([, value]) => value !== undefined && value !== null)
     .map(([key, value]) => {
       if (typeof value === 'boolean') return { key, value: { boolValue: value } };
@@ -161,7 +166,7 @@ export function startSpan(
             : {}),
         }),
         status: isError
-          ? { code: 2, message: error instanceof Error ? error.message.slice(0, 256) : 'unknown' }
+          ? { code: 2, message: error instanceof Error ? error.name : 'UnknownError' }
           : { code: 1 },
       });
     },
@@ -203,7 +208,7 @@ export function log(
     service,
     message,
     ...(ctx ? { trace_id: ctx.traceId, span_id: ctx.spanId } : {}),
-    ...Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined && v !== null)),
+    ...Object.fromEntries(Object.entries(sanitizedAttributes(values)).filter(([, v]) => v !== undefined && v !== null)),
   };
   if (
     process.env.OTEL_LOG_STDOUT === 'true' ||
@@ -220,7 +225,7 @@ export function log(
     severityNumber: { debug: 5, info: 9, warn: 13, error: 17 }[level],
     severityText: level.toUpperCase(),
     body: { stringValue: JSON.stringify(content) },
-    attributes: attributes({ 'event.name': message, level, ...values }),
+    attributes: attributes({ 'event.name': message, level, ...sanitizedAttributes(values) }),
     ...(ctx ? { traceId: ctx.traceId, spanId: ctx.spanId } : {}),
   });
 }
