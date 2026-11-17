@@ -143,4 +143,30 @@ describe('transactional outbox publisher', () => {
     expect(await publisher.publish(event())).toBe(false);
     expect(updates.some((sql) => sql.includes('set attempts='))).toBe(true);
   });
+
+  it('ends its polling loop after SIGTERM without claiming another event', async () => {
+    const { publisher } = fake(() => Promise.resolve({}), []);
+    const controller = new AbortController();
+    let cycles = 0;
+    publisher.runOnce = async () => {
+      cycles++;
+      controller.abort();
+      return { claimed: 0, published: 0, retried: 0 };
+    };
+    await publisher.run(controller.signal, 1);
+    expect(cycles).toBe(1);
+  });
+
+  it('survives a publish-cycle failure and stops on SIGTERM', async () => {
+    const { publisher } = fake(() => Promise.resolve({}), []);
+    const controller = new AbortController();
+    let cycles = 0;
+    publisher.runOnce = async () => {
+      cycles++;
+      controller.abort();
+      throw new Error('PostgreSQL temporarily unavailable');
+    };
+    await publisher.run(controller.signal, 1);
+    expect(cycles).toBe(1);
+  });
 });

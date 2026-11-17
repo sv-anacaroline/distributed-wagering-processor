@@ -272,4 +272,30 @@ describe('SQS wager worker delivery policy', () => {
     expect(error).toBeInstanceOf(Error);
     expect(sent).toHaveLength(0);
   });
+
+  it('stops polling after graceful shutdown without receiving a second batch', async () => {
+    const { worker } = setup(() => Promise.resolve());
+    const controller = new AbortController();
+    let cycles = 0;
+    worker.runOnce = async () => {
+      cycles++;
+      controller.abort();
+      return [];
+    };
+    await worker.run(controller.signal);
+    expect(cycles).toBe(1);
+  });
+
+  it('does not start another polling iteration after a fatal receive interruption during shutdown', async () => {
+    const { worker } = setup(() => Promise.resolve());
+    const controller = new AbortController();
+    let cycles = 0;
+    worker.runOnce = async () => {
+      cycles++;
+      controller.abort();
+      throw new Error('ReceiveMessage interrupted by SIGTERM');
+    };
+    await worker.run(controller.signal);
+    expect(cycles).toBe(1);
+  });
 });
