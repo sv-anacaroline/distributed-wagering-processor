@@ -83,6 +83,13 @@ export function assertProviderIdentity(providerId: string, authenticatedProvider
   }
 }
 
+export function assertMetricsIdentity(authorizedParty?: string): void {
+  if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
+  if (!authorizedParty || authorizedParty !== (process.env.OIDC_METRICS_CLIENT_ID ?? 'wagering-monitor')) {
+    throw new ForbiddenException('An operations identity is required');
+  }
+}
+
 @Injectable()
 export class OidcAuthGuard implements CanActivate {
   private readonly keys = new Map<string, { key: KeyObject; expiresAt: number }>();

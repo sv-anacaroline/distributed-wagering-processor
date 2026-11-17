@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { assertProviderIdentity, OidcAuthGuard, verifyOidcJwt } from './oidc.guard.js';
+import { assertMetricsIdentity, assertProviderIdentity, OidcAuthGuard, verifyOidcJwt } from './oidc.guard.js';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 function token(override: Record<string, unknown> = {}): string {
@@ -181,6 +181,25 @@ describe('OIDC guard integrated with an external JWKS endpoint', () => {
       expect(await new OidcAuthGuard().canActivate(context().ctx)).toBe(true);
     } finally {
       process.env.HTTP_AUTH_MODE = old;
+    }
+  });
+});
+
+describe('operations client authorization', () => {
+  it('allows metrics only for the configured signed monitoring client', () => {
+    const mode = process.env.HTTP_AUTH_MODE;
+    const ops = process.env.OIDC_METRICS_CLIENT_ID;
+    process.env.HTTP_AUTH_MODE = 'oidc';
+    process.env.OIDC_METRICS_CLIENT_ID = 'wagering-monitor';
+    try {
+      expect(() => assertMetricsIdentity('wagering-monitor')).not.toThrow();
+      expect(() => assertMetricsIdentity('provider-a')).toThrow(ForbiddenException);
+      expect(() => assertMetricsIdentity()).toThrow(ForbiddenException);
+    } finally {
+      if (mode === undefined) delete process.env.HTTP_AUTH_MODE;
+      else process.env.HTTP_AUTH_MODE = mode;
+      if (ops === undefined) delete process.env.OIDC_METRICS_CLIENT_ID;
+      else process.env.OIDC_METRICS_CLIENT_ID = ops;
     }
   });
 });

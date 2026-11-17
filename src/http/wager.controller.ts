@@ -15,6 +15,7 @@ import { WagerTransactionStatus as Status } from '../domain/wager-transaction.js
 import { OidcAuthGuard, assertProviderIdentity } from './oidc.guard.js';
 import { textField, uuidField, wagerPayload } from './request-validation.js';
 import { WagerService } from './wager.service.js';
+import { WalletAccessService } from './wallet-access.service.js';
 
 interface ProviderRequest {
   readonly authProviderId?: string;
@@ -22,7 +23,7 @@ interface ProviderRequest {
 @Controller('wagering/transactions')
 @UseGuards(OidcAuthGuard)
 export class WagerController {
-  constructor(private readonly wagers: WagerService) {}
+  constructor(private readonly wagers: WagerService, private readonly access: WalletAccessService) {}
 
   @Post()
   @HttpCode(200)
@@ -34,6 +35,7 @@ export class WagerController {
   ) {
     const command = wagerPayload(body, key);
     assertProviderIdentity(command.providerId, req.authProviderId);
+    await this.access.assertAllowed(command.walletId, req.authProviderId);
     const result = await this.wagers.submit(command);
     res.status(
       result.status === Status.PendingReference
@@ -49,6 +51,7 @@ export class WagerController {
   async find(@Param('transactionId') id: string, @Req() req: ProviderRequest) {
     const result = await this.wagers.findById(uuidField(id, 'transactionId'));
     assertProviderIdentity(result.providerId, req.authProviderId);
+    await this.access.assertAllowed(result.walletId, req.authProviderId);
     return result;
   }
 }
@@ -56,16 +59,20 @@ export class WagerController {
 @Controller('providers/:providerId/wagering/transactions')
 @UseGuards(OidcAuthGuard)
 export class ProviderWagerController {
-  constructor(private readonly wagers: WagerService) {}
+  constructor(private readonly wagers: WagerService, private readonly access: WalletAccessService) {}
 
   @Get(':externalTransactionId')
-  find(
+  async find(
     @Param('providerId') providerId: string,
     @Param('externalTransactionId') externalId: string,
     @Req() req: ProviderRequest,
   ) {
     const provider = textField(providerId, 'providerId');
     assertProviderIdentity(provider, req.authProviderId);
-    return this.wagers.findByExternalId(provider, textField(externalId, 'externalTransactionId'));
+    const transaction = await this.wagers.findByExternalId(
+      provider, textField(externalId, 'externalTransactionId'),
+    );
+    await this.access.assertAllowed(transaction.walletId, req.authProviderId);
+    return transaction;
   }
 }

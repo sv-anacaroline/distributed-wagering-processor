@@ -65,7 +65,7 @@ function walletView(row: WalletRow): WalletView {
 export class WalletService {
   constructor(@Inject(CoreEntityManager) private readonly em: EntityManager) {}
 
-  async create(playerId: string, initialBalance: MoneyProps): Promise<WalletView> {
+  async create(playerId: string, initialBalance: MoneyProps, providerId?: string): Promise<WalletView> {
     const balance = Money.from(initialBalance);
     const id = randomUUID();
     const at = new Date();
@@ -77,6 +77,14 @@ export class WalletService {
            values(?::uuid,?::uuid,?,?::numeric,1,?,?)`,
           [wallet.id, wallet.playerId, wallet.currency, wallet.balance.toJSON().amount, at, at],
         );
+        if (providerId) {
+          // Grant only as part of the wallet opening commit; a failed
+          // ledger/OPENING transaction cannot leave a dangling access grant.
+          await em.execute(
+            'insert into wallet_provider_grants(wallet_id,provider_id) values (?::uuid,?)',
+            [wallet.id, providerId],
+          );
+        }
         if (balance.isPositive()) {
           const transactionId = randomUUID();
           const tx = WagerTransaction.opening({

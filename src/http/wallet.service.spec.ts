@@ -141,3 +141,22 @@ describe('wallet opening SQL transaction and ledger adapter', () => {
     expect(queryLog[3]).not.toContain('offset');
   });
 });
+
+describe('grant is part of the wallet-opening commit', () => {
+  it('inserts access grant for the verified provider before ledger and opening', async () => {
+    const queries: string[] = [];
+    const manager = {
+      execute: (sql: string) => { queries.push(sql); return Promise.resolve([]); },
+      transactional: (fn: (em: unknown) => Promise<unknown>) => fn(manager),
+    };
+    const wallet = new WalletService({ fork: () => manager } as never);
+    const result = await wallet.create(
+      randomUUID(), { amount: '10.00', currency: 'BRL' }, 'provider-a',
+    );
+    expect(result.balance.amount).toBe('10.00');
+    expect(queries[0]).toContain('insert into wallets');
+    expect(queries[1]).toContain('insert into wallet_provider_grants');
+    expect(queries[2]).toContain('insert into wager_transactions');
+    expect(queries[3]).toContain('insert into wallet_ledger_entries');
+  });
+});
