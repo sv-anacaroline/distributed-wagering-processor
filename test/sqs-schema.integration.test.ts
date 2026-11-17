@@ -15,9 +15,9 @@ describe('SQS Inbox and Outbox SQL invariants', () => {
   it('preserves the per-wallet unpublished-head index', async () => {
     const [index] = await orm.em.execute<Array<{ indexdef: string }>>(
       `select indexdef from pg_indexes
-       where schemaname=current_schema() and indexname='outbox_wallet_pending_order_idx'`,
+       where schemaname=current_schema() and indexname='outbox_wallet_pending_sequence_idx'`,
     );
-    expect(index?.indexdef).toContain('(aggregate_id, occurred_at, id)');
+    expect(index?.indexdef).toContain('(aggregate_id, publication_sequence)');
     expect(index?.indexdef).toContain('published_at IS NULL');
   });
   it('rejects mutable Inbox identity, hash and processed status at database level', async () => {
