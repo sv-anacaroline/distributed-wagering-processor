@@ -21,6 +21,7 @@ import { OutboxMessage } from '../domain/outbox-message.js';
 import { InboxMessage } from '../domain/inbox-message.js';
 import type { IntegrationEvent } from '../domain/integration-event.js';
 import { applyWagerRules } from './wager-rules.js';
+import { isFinancialProviderIdAllowed } from './provider-identity.js';
 import { initialReferenceRetry, nextReferenceRetry } from './reference-retry.js';
 import { withTransactionRetry } from './transaction-retry.js';
 import {
@@ -183,9 +184,7 @@ async function assertTrustedQueueProvider(
   providerId: string,
 ): Promise<void> {
   if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
-  if (providerId === (process.env.OIDC_METRICS_CLIENT_ID ?? 'wagering-monitor')) {
-    throw new ProviderWalletMismatchError();
-  }
+  if (!isFinancialProviderIdAllowed(providerId)) throw new ProviderWalletMismatchError();
   const granted = await rows<{ allowed: number }>(
     em,
     `select 1 as allowed from wallet_provider_grants
