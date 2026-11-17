@@ -21,6 +21,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  log('error', 'Reference retry worker stopped', error);
+  log('error', 'Reference retry worker stopped', { error_type: error instanceof Error ? error.name : 'UnknownError' });
   process.exitCode = 1;
 });

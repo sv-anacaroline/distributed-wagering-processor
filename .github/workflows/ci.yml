@@ -37,6 +37,11 @@ jobs:
       - name: Verify formatting
         if: success() || failure()
         run: bun run format:check
+      - name: Print formatter diff (temporary diagnostic)
+        if: failure()
+        run: |
+          bun run format >/dev/null
+          git diff --no-ext-diff -- src test performance
 
   quality:
     name: Unit, E2E, coverage and PostgreSQL

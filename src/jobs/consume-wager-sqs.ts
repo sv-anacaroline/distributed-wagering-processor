@@ -43,6 +43,6 @@ async function main(): Promise<void> {
   }
 }
 void main().catch((error: unknown) => {
-  log('error', 'SQS wager worker terminated', error);
+  log('error', 'SQS wager worker terminated', { error_type: error instanceof Error ? error.name : 'UnknownError' });
   process.exitCode = 1;
 });
