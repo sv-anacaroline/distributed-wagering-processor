@@ -900,8 +900,8 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       [bets[0]?.externalTransactionId, bets[1]?.externalTransactionId],
     );
     expect(rows).toHaveLength(2);
-    expect(rows.filter(row => row.status === Status.Processed)).toHaveLength(1);
-    const refused = rows.filter(row => row.status === Status.Rejected);
+    expect(rows.filter(row => row.status === 'PROCESSED')).toHaveLength(1);
+    const refused = rows.filter(row => row.status === 'REJECTED');
     expect(refused).toHaveLength(1);
     expect(refused[0]?.failure_code).toBe('INSUFFICIENT_FUNDS');
     const [stored] = await orm.em.execute<Array<{ balance: string; version: number }>>(
