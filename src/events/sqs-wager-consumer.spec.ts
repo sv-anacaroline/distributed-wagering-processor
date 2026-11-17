@@ -197,7 +197,7 @@ describe('SQS wager worker delivery policy', () => {
     const { worker, sent } = setup(async () => {
       calls++;
       if (calls === 1) await gate;
-      return {} as never;
+      return {};
     }, [message(), message(payload())]);
     const run = worker.runOnce();
     await Promise.resolve();
@@ -216,7 +216,7 @@ describe('SQS wager worker delivery policy', () => {
     const { worker } = setup(async () => {
       started++;
       if (started === 1) await gate;
-      return {} as never;
+      return {};
     }, [message(payload(), '1', 'wallet-A'), message(payload(), '1', 'wallet-B')]);
     const run = worker.runOnce();
     for (let i = 0; i < 10 && started < 2; i++) await Promise.resolve();
