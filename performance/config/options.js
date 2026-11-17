@@ -36,6 +36,7 @@ const scenarioConfigs = {
     ],
   },
   soak: { executor: 'constant-vus', vus, duration: __ENV.K6_SOAK_DURATION || '10m' },
+  'hot-wallet': { executor: 'constant-vus', vus: Math.max(vus, 3), duration },
 };
 
 export function optionsFor(scenario) {
