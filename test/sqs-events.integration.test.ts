@@ -146,8 +146,9 @@ async function verifyDeliveredEvent(event: Published): Promise<void> {
   );
   // E2E proof: every SQS delivery matches exactly what was committed
   // and marked published in PostgreSQL after the broker accepted it.
-  expect(saved?.published_at).toBeTruthy();
-  expect(event).toEqual(saved?.payload);
+  if (!saved) throw new Error('SQS event was not persisted in Outbox');
+  expect(saved.published_at).toBeTruthy();
+  expect(event).toEqual(saved.payload);
 }
 
 async function assertSourceAcked(): Promise<void> {
