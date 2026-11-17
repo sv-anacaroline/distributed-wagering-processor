@@ -23,6 +23,8 @@ export interface OidcClaims {
   readonly nbf?: number;
   /** Custom provider claim issued by the external IdP, never trusted from request JSON. */
   readonly provider_id?: string;
+  /** Keycloak authorized party (the OAuth client ID). */
+  readonly azp: string;
 }
 interface JwtHeader {
   readonly alg?: string;
@@ -62,6 +64,9 @@ export function verifyOidcJwt(
     claims.iss !== issuer ||
     typeof claims.sub !== 'string' ||
     !claims.sub ||
+    typeof claims.azp !== 'string' ||
+    claims.azp.length === 0 ||
+    (claims.provider_id !== undefined && claims.provider_id !== claims.azp) ||
     typeof claims.exp !== 'number' ||
     claims.exp <= nowSeconds ||
     (typeof claims.nbf === 'number' && claims.nbf > nowSeconds) ||
@@ -71,10 +76,42 @@ export function verifyOidcJwt(
   }
   return claims as unknown as OidcClaims;
 }
+/**
+ * Explicit allowlist for financial OAuth clients. The monitoring service can
+ * never open or access wallets even with a signed audience-correct token.
+ * Production MUST configure OIDC_PROVIDER_CLIENT_IDS; an absent list denies all.
+ */
+export function assertFinancialProviderIdentity(authenticatedProvider?: string): void {
+  if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
+  const configured = process.env.OIDC_PROVIDER_CLIENT_IDS;
+  const ids = (configured ?? (process.env.NODE_ENV === 'production' ? '' : 'provider-a,provider-b'))
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    !authenticatedProvider ||
+    authenticatedProvider === (process.env.OIDC_METRICS_CLIENT_ID ?? 'wagering-monitor') ||
+    !ids.includes(authenticatedProvider)
+  ) {
+    throw new ForbiddenException('An authorized financial provider identity is required');
+  }
+}
+
 export function assertProviderIdentity(providerId: string, authenticatedProvider?: string): void {
   if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
-  if (!authenticatedProvider || authenticatedProvider !== providerId) {
+  assertFinancialProviderIdentity(authenticatedProvider);
+  if (authenticatedProvider !== providerId) {
     throw new ForbiddenException('Provider identity does not match token');
+  }
+}
+
+export function assertMetricsIdentity(authorizedParty?: string): void {
+  if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
+  if (
+    !authorizedParty ||
+    authorizedParty !== (process.env.OIDC_METRICS_CLIENT_ID ?? 'wagering-monitor')
+  ) {
+    throw new ForbiddenException('An operations identity is required');
   }
 }
 
@@ -104,7 +141,7 @@ export class OidcAuthGuard implements CanActivate {
     const jwtParts = token.split('.');
     if (jwtParts.length !== 3) throw new UnauthorizedException('Invalid JWT');
     const jwtHeader = decoded(jwtParts[0] ?? '') as JwtHeader;
-    if (jwtHeader.alg !== 'RS256' || !jwtHeader.kid) {
+    if (jwtHeader.alg !== 'RS256' || !jwtHeader.kid || jwtHeader.kid.length > 128) {
       throw new UnauthorizedException('JWT must use RS256 with kid');
     }
     let entry = this.keys.get(jwtHeader.kid);
@@ -118,7 +155,13 @@ export class OidcAuthGuard implements CanActivate {
       } catch {
         throw new ServiceUnavailableException('Identity provider is unreachable');
       }
-      const jwk = jwks.keys.find((item) => item.kid === jwtHeader.kid && item.kty === 'RSA');
+      const jwk = jwks.keys.find(
+        (item) =>
+          item.kid === jwtHeader.kid &&
+          item.kty === 'RSA' &&
+          (!('use' in item) || item.use === 'sig') &&
+          (!('alg' in item) || item.alg === 'RS256'),
+      );
       if (!jwk) throw new UnauthorizedException('Unknown JWT key ID');
       try {
         entry = {
@@ -134,7 +177,7 @@ export class OidcAuthGuard implements CanActivate {
       this.keys.set(jwtHeader.kid, entry);
     }
     const claims = verifyOidcJwt(token, entry.key, issuer, audience, Math.floor(Date.now() / 1000));
-    if (claims.provider_id) req.authProviderId = claims.provider_id;
+    req.authProviderId = claims.azp;
     return true;
   }
 }

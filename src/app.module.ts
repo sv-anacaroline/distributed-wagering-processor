@@ -5,6 +5,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import ormConfig from './mikro-orm.config.js';
 import { WalletService } from './http/wallet.service.js';
+import { WalletAccessService } from './http/wallet-access.service.js';
 import { WagerService } from './http/wager.service.js';
 import { ReconciliationService } from './http/reconciliation.service.js';
 import { WalletController } from './http/wallet.controller.js';
@@ -39,6 +40,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
   providers: [
     AppService,
     WalletService,
+    WalletAccessService,
     WagerService,
     ReconciliationService,
     HealthService,

@@ -8,7 +8,13 @@ import {
   UnauthorizedException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { assertProviderIdentity, OidcAuthGuard, verifyOidcJwt } from './oidc.guard.js';
+import {
+  assertMetricsIdentity,
+  assertFinancialProviderIdentity,
+  assertProviderIdentity,
+  OidcAuthGuard,
+  verifyOidcJwt,
+} from './oidc.guard.js';
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 function token(override: Record<string, unknown> = {}): string {
@@ -22,6 +28,7 @@ function token(override: Record<string, unknown> = {}): string {
       sub: 'user1',
       exp: 4_000_000_000,
       provider_id: 'provider-a',
+      azp: 'provider-a',
       ...override,
     }),
   ).toString('base64url');
@@ -42,6 +49,12 @@ describe('OIDC JWT verification', () => {
   it('accepts RS256 signatures and verified provider claims', () => {
     expect(verify(token()).provider_id).toBe('provider-a');
   });
+  it('rejects unsigned provider impersonation and mismatched authorized-party claims', () => {
+    expect(() => verify(token({ azp: 'provider-b' }))).toThrow(UnauthorizedException);
+    expect(() => verify(token({ provider_id: 'provider-b' }))).toThrow(UnauthorizedException);
+    expect(() => verify(token({ azp: null }))).toThrow(UnauthorizedException);
+    expect(verify(token({ provider_id: undefined })).azp).toBe('provider-a');
+  });
   it('rejects missing or invalid signatures', () => {
     expect(() => verify('bad-token')).toThrow(UnauthorizedException);
     expect(() => verify(token().slice(0, -2) + 'xx')).toThrow(UnauthorizedException);
@@ -54,6 +67,24 @@ describe('OIDC JWT verification', () => {
       { aud: 'other-api' },
     ]) {
       expect(() => verify(token(claims))).toThrow(UnauthorizedException);
+    }
+  });
+  it('authorizes only configured financial OAuth clients, never the monitoring client', () => {
+    const mode = process.env.HTTP_AUTH_MODE;
+    const ids = process.env.OIDC_PROVIDER_CLIENT_IDS;
+    process.env.HTTP_AUTH_MODE = 'oidc';
+    process.env.OIDC_PROVIDER_CLIENT_IDS = 'provider-a,provider-b,wagering-monitor';
+    try {
+      expect(() => assertFinancialProviderIdentity('provider-a')).not.toThrow();
+      expect(() => assertFinancialProviderIdentity('provider-b')).not.toThrow();
+      expect(() => assertFinancialProviderIdentity('wagering-monitor')).toThrow(ForbiddenException);
+      expect(() => assertFinancialProviderIdentity('unknown-service')).toThrow(ForbiddenException);
+      expect(() => assertFinancialProviderIdentity()).toThrow(ForbiddenException);
+    } finally {
+      if (mode === undefined) delete process.env.HTTP_AUTH_MODE;
+      else process.env.HTTP_AUTH_MODE = mode;
+      if (ids === undefined) delete process.env.OIDC_PROVIDER_CLIENT_IDS;
+      else process.env.OIDC_PROVIDER_CLIENT_IDS = ids;
     }
   });
   it('rejects mismatched provider access', () => {
@@ -174,6 +205,25 @@ describe('OIDC guard integrated with an external JWKS endpoint', () => {
       expect(await new OidcAuthGuard().canActivate(context().ctx)).toBe(true);
     } finally {
       process.env.HTTP_AUTH_MODE = old;
+    }
+  });
+});
+
+describe('operations client authorization', () => {
+  it('allows metrics only for the configured signed monitoring client', () => {
+    const mode = process.env.HTTP_AUTH_MODE;
+    const ops = process.env.OIDC_METRICS_CLIENT_ID;
+    process.env.HTTP_AUTH_MODE = 'oidc';
+    process.env.OIDC_METRICS_CLIENT_ID = 'wagering-monitor';
+    try {
+      expect(() => assertMetricsIdentity('wagering-monitor')).not.toThrow();
+      expect(() => assertMetricsIdentity('provider-a')).toThrow(ForbiddenException);
+      expect(() => assertMetricsIdentity()).toThrow(ForbiddenException);
+    } finally {
+      if (mode === undefined) delete process.env.HTTP_AUTH_MODE;
+      else process.env.HTTP_AUTH_MODE = mode;
+      if (ops === undefined) delete process.env.OIDC_METRICS_CLIENT_ID;
+      else process.env.OIDC_METRICS_CLIENT_ID = ops;
     }
   });
 });

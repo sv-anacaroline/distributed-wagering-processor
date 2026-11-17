@@ -8,9 +8,41 @@ financeiras e Outbox em transações PostgreSQL. Testes unitários e de integra�
 com banco real asseguram invariantes, inclusive com três processos Bun
 independentes. Nenhum mecanismo de consistência depende de memória local.
 
-**A API HTTP e os workers SQS/Transactional Outbox já estão implementados. Faltam autenticação/autorização multi-tenant de mensagens, reconciliação operacional automatizada e deploy EKS dos workers.**
+**A API HTTP, os workers SQS/Transactional Outbox e a autorização HTTP por provedor via Keycloak já estão implementados. O canal SQS é interno e confiável conforme o enunciado; permanecem pendentes a integração de produção do IdP, reconciliação operacional automatizada e deploy EKS dos workers.**
 A seção 8 valida concorrência por wallet no PostgreSQL, não a entrega em
 ordem dos eventos por SQS.
+
+## Autenticação — seção 2
+
+O desafio não pontua autenticação; a implementação é intencionalmente
+mínima e baseada em **IdP externo Keycloak**. O container dev
+(`quay.io/keycloak/keycloak:26.8.2`) importa um realm com
+`provider-a`, `provider-b` e `wagering-monitor` como clients
+confidenciais para `client_credentials`. Não criamos tabelas
+de usuários/senhas nem endpoints de login.
+
+`OidcAuthGuard` valida tokens RS256 via JWKS, issuer, audience,
+expiry/nbf e `azp`. A identidade no body/URL do wagering tem de
+ser igual ao `azp` assinado. Guard falha fechado em produção.
+`/health/live` e `/health/ready` ficam sem autenticação.
+Métricas globais são reservadas ao client operacional. Os recursos
+financeiros exigem um OAuth client listado em `OIDC_PROVIDER_CLIENT_IDS`;
+`wagering-monitor` é explicitamente proibido, mesmo com JWT válido.
+
+`wallet_provider_grants(wallet_id,provider_id)` permite autorizar
+vários providers para uma wallet mantendo `UNIQUE(player_id,currency)`.
+A abertura de wallet associa o provider autenticado **no mesmo commit**
+do lançamento OPENING/ledger. Toda consulta financeira HTTP exige grant;
+wallets já existentes precisam de autorização administrativa explícita.
+A aplicação não fornece endpoint público para criar grants.
+A autorização é no adapter HTTP, sem contaminar entidades de domínio.
+Mensagens SQS ficam como canal interno confiável da seção 2:
+nada de tokens de usuário no envelope; suas identidades de provider
+continuam validadas pelas mesmas invariantes de domínio de referência,
+idempotência e wallet.
+
+A imagem e as senhas de desenvolvimento não são indicadas para produção.
+Leia [docs/AUTH.md](docs/AUTH.md) para configuração do IdP, E2E e EKS.
 
 ## Money
 
@@ -40,8 +72,8 @@ ordem dos eventos por SQS.
 - **O modelo em memória não substitui o lock por wallet e a transação SQL**.
   O caso de uso usa `SELECT ... FOR NO KEY UPDATE` por `walletId`, efetua
   movimentações e persiste wallet + ledger + wager + outbox no mesmo commit.
-  Quando o consumidor SQS existir, também deverá persistir Inbox nessa
-  mesma transação e enviar ack somente depois do commit.
+  O consumidor SQS também persiste Inbox nessa mesma transação e envia
+  ACK somente depois do commit.
 - O ledger SQL tem `wallet_version`. O repositório futuro obtém esse valor
   de `Wallet.version` no mesmo caso de uso em que grava o lançamento.
 
@@ -286,14 +318,12 @@ pode gerar nova entrega: os assinantes precisam idempotência durável.
 Revisões de retry/DLQ, SIGTERM e E2E reais no MiniStack são descritas em
 [docs/EVENTS.md](docs/EVENTS.md).
 
-**A próxima etapa Auth deve vincular providers e wallets
-ao emissor autenticado também no canal SQS; IAM sozinho não autentica
-o JSON de negócio.**
+**A seção 2 define a fila como canal interno confiável. O consumer valida o `providerId` do envelope com as invariantes de domínio; a infraestrutura deve restringir a origem via IAM e política SQS.**
 
 ## Próximos passos
 
 1. Autorização de acesso por wallet/tenant com vínculo ao provedor autenticado.
-2. Auth/autorização por provider para HTTP e SQS; vínculo de ownership de wallets.
+2. Autorização HTTP por provider aplicada; aprimorar governança de grants e restrição IAM ao produtor SQS.
 3. Adapters ORM e evolução de migrations, sem alterar o domínio financeiro.
 4. Ampliar os testes distribuídos para chaos/rede e execução em pods EKS.
 5. Reconciliação operacional recorrente, métricas externas e alertas.

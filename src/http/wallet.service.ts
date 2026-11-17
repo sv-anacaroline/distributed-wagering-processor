@@ -68,7 +68,11 @@ function walletView(row: WalletRow): WalletView {
 export class WalletService {
   constructor(@Inject(CoreEntityManager) private readonly em: EntityManager) {}
 
-  async create(playerId: string, initialBalance: MoneyProps): Promise<WalletView> {
+  async create(
+    playerId: string,
+    initialBalance: MoneyProps,
+    providerId?: string,
+  ): Promise<WalletView> {
     const balance = Money.from(initialBalance);
     const id = randomUUID();
     const at = new Date();
@@ -80,6 +84,14 @@ export class WalletService {
            values(?::uuid,?::uuid,?,?::numeric,1,?,?)`,
           [wallet.id, wallet.playerId, wallet.currency, wallet.balance.toJSON().amount, at, at],
         );
+        if (providerId) {
+          // Record access in the SAME transaction as wallet, OPENING,
+          // ledger and both Outbox events. Failures roll back everything.
+          await em.execute(
+            'insert into wallet_provider_grants(wallet_id,provider_id) values (?::uuid,?)',
+            [wallet.id, providerId],
+          );
+        }
         if (balance.isPositive()) {
           const transactionId = randomUUID();
           const tx = WagerTransaction.opening({

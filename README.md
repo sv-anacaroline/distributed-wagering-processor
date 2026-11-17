@@ -2,7 +2,7 @@
 
 Desafio técnico da Jungle Gaming: processamento financeiro distribuído de apostas, com foco em precisão monetária, idempotência, concorrência e recuperação após falhas.
 
-> **Estado atual:** domínio, regras financeiras, concorrência PostgreSQL e **API REST da seção 9** implementados com testes. O processamento HTTP confirma ledger + Outbox no mesmo commit. **Ainda faltam consumidores/publicadores SQS, autorização multi-tenant refinada, mapeamentos ORM e deploy.** Os health checks são `/health/live` e `/health/ready`, não `GET /`.
+> **Estado atual:** domínio, regras financeiras, concorrência PostgreSQL e **API REST da seção 9** implementados com testes. O processamento HTTP confirma ledger + Outbox no mesmo commit. **Os workers SQS/Outbox e a autenticação HTTP via Keycloak já foram implementados; faltam validações de ambiente de produção, mapeamentos ORM e deploy EKS.** Os health checks são `/health/live` e `/health/ready`, não `GET /`.
 
 ## Stack
 
@@ -136,6 +136,32 @@ bun run test:concurrency
 Consulte [ARCHITECTURE.md](ARCHITECTURE.md) para as garantias de
 ordenação, os índices utilizados e o diagnóstico de contenção.
 
+## Auth — Keycloak OIDC com isolamento entre providers
+
+O projeto integra **Keycloak** (IdP externo), usando OAuth2
+`client_credentials` para `provider-a`, `provider-b` e
+`wagering-monitor`. A API valida assinatura RS256, `iss`, `aud`
+e `azp` dos access tokens. Somente os OAuth clients de
+`OIDC_PROVIDER_CLIENT_IDS` podem executar operações financeiras;
+`wagering-monitor` acessa apenas métricas. Não há usuários/senhas locais.
+
+```bash
+cp .env.example .env
+docker compose --profile auth up -d postgres keycloak
+bun run db:migrate:up
+OIDC_JWKS_URL=http://localhost:8080/realms/wagering/protocol/openid-connect/certs bun run start:dev
+```
+
+Os grants `wallet_provider_grants` são criados com a wallet na mesma
+transação SQL. Providers não acessam wallets uns dos outros sem
+concessão explícita; health checks continuam públicos.
+
+**[Instruções de Keycloak, tokens, .env, permissões e E2E](docs/AUTH.md)**
+
+Os workers SQS/Outbox já fazem parte da `master`. A seção 2 define
+SQS como canal interno confiável; a identidade declarada no envelope
+continua sujeita às validações de domínio.
+
 ## API REST (Seção 9)
 
 O NestJS expõe `POST /wallets`, consultas de wallet e ledger com cursor
@@ -144,7 +170,9 @@ consultas por ID interno/externo, reconciliação e health checks.
 O código HTTP reutiliza `ProcessWager`: não há segunda implementação
 de saldo/idempotência.
 
-Em desenvolvimento, escolha explicitamente `HTTP_AUTH_MODE=disabled`.
+Para testes sem IdP, use explicitamente `HTTP_AUTH_MODE=disabled`
+somente em desenvolvimento. Para testar autenticação real, use o perfil
+`auth` do Compose e siga o guia de Keycloak.
 Em produção, configure um IdP OIDC RS256/JWKS; a aplicação não implementa
 senhas ou sessões próprias. `/health/*` é público.
 
@@ -176,14 +204,15 @@ Edite o `.env`:
 Não versione o arquivo `.env`, tokens, credenciais ou arquivos de estado do Terraform.
 
 ```bash
-docker compose config
-docker compose up --build -d
-docker compose ps
-docker compose logs terraform-local
-curl http://localhost:3000/
+docker compose --profile auth config
+docker compose --profile auth up --build -d
+docker compose --profile auth ps
+docker compose --profile auth logs terraform-local
+curl http://localhost:3000/health/live
 ```
 
-O Compose inicia **API Bun, PostgreSQL 17, emulador AWS e job de Terraform** que cria:
+Com `--profile auth`, o Compose inicia **API Bun, Keycloak, PostgreSQL 17,
+emulador AWS e job de Terraform** que cria:
 
 - `wager-transactions.fifo` (fila de entrada).
 - `wager-transactions-dlq.fifo` (dead-letter queue).
@@ -259,12 +288,12 @@ bun run test:events:e2e
 Veja [docs/EVENTS.md](docs/EVENTS.md) para setup MiniStack, contratos,
 retries, DLQ, semântica at-least-once, crash recovery e testes E2E.
 
-**Auth por provider para o canal SQS e ownership das wallets ainda
-serão implementados na entrega final de autenticação.**
+**A autorização de clientes HTTP utiliza grants por wallet. Mensagens SQS são
+tratadas como canal interno confiável, com validações de domínio e proteção da fila via IAM.**
 
 ## Limitações atuais
 
-- Modelo e regras de negócio implementados, com transações PostgreSQL e Outbox persistida. **A API e os workers SQS/Outbox estão implementados, mas ainda faltam autorização de wallet por provedor, validação de identidade das mensagens SQS, mapeamentos ORM ou deploy EKS**.
+- Modelo e regras de negócio implementados, com transações PostgreSQL e Outbox persistida. **A API, workers SQS/Outbox e autorização HTTP de wallet por provider estão implementados; faltam mapeamentos ORM e deploy EKS**.
 - Kubernetes usa `/health/live` e `/health/ready` como probes; configurar OIDC, segredo de cursor e acesso SQS/IAM antes do deploy.
 - Terraform AWS é um exemplo de desenvolvimento com state local; não é um ambiente de produção pronto.
 - Provisionamento real e integração ponta a ponta ainda dependem de validação com Docker, Bun, Terraform e uma conta AWS.

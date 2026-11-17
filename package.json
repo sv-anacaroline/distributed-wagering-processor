@@ -41,7 +41,8 @@
     "test:api:e2e": "bun test ./test/http-api.e2e.test.ts",
     "worker:sqs": "bun src/jobs/consume-wager-sqs.ts",
     "worker:outbox": "bun src/jobs/publish-outbox.ts",
-    "test:events:e2e": "bun test ./test/sqs-inbox.integration.test.ts ./test/sqs-events.integration.test.ts"
+    "test:events:e2e": "bun test ./test/sqs-inbox.integration.test.ts ./test/sqs-events.integration.test.ts",
+    "test:auth:e2e": "AUTH_E2E=1 bun test ./test/auth-keycloak.e2e.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
