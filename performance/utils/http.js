@@ -27,7 +27,10 @@ const routeNames = [
   'hot-wallet-reconciliation',
 ];
 const routeTrends = Object.fromEntries(
-  routeNames.map((route) => [route, new Trend(`financial_route_${route.replace(/-/g, '_')}_ms`, true)]),
+  routeNames.map((route) => [
+    route,
+    new Trend(`financial_route_${route.replace(/-/g, '_')}_ms`, true),
+  ]),
 );
 function measured(response, route) {
   if (response?.timings && typeof response.timings.duration === 'number') {
@@ -167,14 +170,17 @@ export function wagerRequest(wallet, amount = '80.00') {
 }
 
 export function submitBet(command) {
-  return measured(http.post(`${baseUrl}/wagering/transactions`, JSON.stringify(command), {
-    ...params('wager-bet', expectedBetStatuses),
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders(),
-      'Idempotency-Key': `${command.providerId}:${command.externalTransactionId}`,
-    },
-  }), 'wager-bet');
+  return measured(
+    http.post(`${baseUrl}/wagering/transactions`, JSON.stringify(command), {
+      ...params('wager-bet', expectedBetStatuses),
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+        'Idempotency-Key': `${command.providerId}:${command.externalTransactionId}`,
+      },
+    }),
+    'wager-bet',
+  );
 }
 
 export function financialIteration() {
@@ -230,14 +236,21 @@ export function financialIteration() {
     'ledger-read',
   );
   const recon = measured(
-    http.post(`${baseUrl}/wallets/${wallet.walletId}/reconciliation`, '{}', params('reconciliation')),
+    http.post(
+      `${baseUrl}/wallets/${wallet.walletId}/reconciliation`,
+      '{}',
+      params('reconciliation'),
+    ),
     'reconciliation',
   );
   // Exercise every HTTP route, including operational and both read models.
   // Individual endpoint tags give separate p50/p95/p99 distributions in k6.
   const root = measured(http.get(`${baseUrl}/`, params('root')), 'root');
   const live = measured(http.get(`${baseUrl}/health/live`, params('health-live')), 'health-live');
-  const ready = measured(http.get(`${baseUrl}/health/ready`, params('health-ready')), 'health-ready');
+  const ready = measured(
+    http.get(`${baseUrl}/health/ready`, params('health-ready')),
+    'health-ready',
+  );
   const byId = oneWinner
     ? measured(
         http.get(`${baseUrl}/wagering/transactions/${win.transactionId}`, params('wager-by-id')),
