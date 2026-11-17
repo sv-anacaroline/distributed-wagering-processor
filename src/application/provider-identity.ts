@@ -8,7 +8,9 @@ export function isFinancialProviderIdAllowed(providerId?: string): boolean {
     return true;
   }
   const configured = process.env.OIDC_PROVIDER_CLIENT_IDS;
-  const permitted = (configured ?? (process.env.NODE_ENV === 'production' ? '' : 'provider-a,provider-b'))
+  const permitted = (
+    configured ?? (process.env.NODE_ENV === 'production' ? '' : 'provider-a,provider-b')
+  )
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean);
