@@ -173,12 +173,12 @@ async function rows<T>(em: EntityManager, sql: string, values: unknown[] = []): 
   return em.execute<T[]>(sql, values, 'all');
 }
 /**
- * SQS is an internal transport, not a source of provider authorization.
- * Check the wallet-to-provider grant using the same locked SQL snapshot
- * as the financial operation. Only explicit non-production auth bypass
- * permits test fixtures without a configured IdP.
+ * Both HTTP and SQS must authorize a *new* financial command while the wallet
+ * is locked. Lock the grant row until commit, so concurrent revocation cannot
+ * invalidate an earlier authorization check before money actually moves.
+ * Exact replays do not create effects and remain safe to ACK after revocation.
  */
-async function assertTrustedQueueProvider(
+async function assertWalletProvider(
   em: EntityManager,
   walletId: string,
   providerId: string,
@@ -188,7 +188,7 @@ async function assertTrustedQueueProvider(
   const granted = await rows<{ allowed: number }>(
     em,
     `select 1 as allowed from wallet_provider_grants
-     where wallet_id=?::uuid and provider_id=? limit 1`,
+     where wallet_id=?::uuid and provider_id=? limit 1 for key share`,
     [walletId, providerId],
   );
   if (granted.length === 0) throw new ProviderWalletMismatchError();
@@ -424,9 +424,10 @@ export class ProcessWager {
       // is revoked: it has no new financial effect and Inbox dedup still
       // verifies the exact message payload before returning its snapshot.
       if (recorded) return finish(replay(recorded, hash), true);
-      // New queue commands require the same provider-wallet grant as HTTP.
-      // A failed grant rolls back the newly reserved Inbox row atomically.
-      if (receipt) await assertTrustedQueueProvider(em, wallet.id, cmd.providerId);
+      // New commands from either transport require the same grant. Verify it
+      // inside this transaction to close the HTTP pre-check/revocation race.
+      // A failed check also rolls back a newly reserved Inbox atomically.
+      await assertWalletProvider(em, wallet.id, cmd.providerId);
 
       const at = await dbNow(em, wallet);
       const tx = WagerTransaction.create({
