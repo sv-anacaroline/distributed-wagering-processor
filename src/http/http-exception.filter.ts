@@ -2,6 +2,7 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from
 import type { Response } from 'express';
 import { DomainError } from '../domain/errors.js';
 import { TransientProcessingError } from '../application/process-wager.js';
+import { count, log } from '../telemetry/otel.js';
 
 function databaseCode(error: unknown): string | undefined {
   let current: unknown = error;
@@ -84,6 +85,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
       original && typeof original === 'object' && !Array.isArray(original)
         ? (original as Record<string, unknown>)
         : null;
+    count('wager_http_exceptions_total', {
+      code: error.code, status: String(error.status),
+    });
+    log(error.status >= 500 ? 'error' : 'warn', 'http.exception', {
+      code: error.code,
+      status: error.status,
+      type: exception instanceof Error ? exception.name : 'UnknownError',
+    });
     response.status(error.status).json({
       statusCode: error.status,
       code: error.code,
