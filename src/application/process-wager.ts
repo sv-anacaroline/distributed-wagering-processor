@@ -412,9 +412,6 @@ export class ProcessWager {
     return this.transaction(async (em) => {
       // Lock ordering: wallet first, then wager rows. The retry worker uses the same order.
       const wallet = await lockWallet(em, cmd.walletId);
-      // Verify identity at the business boundary, before reserving Inbox,
-      // so a forged internal envelope never produces financial side effects.
-      if (receipt) await assertTrustedQueueProvider(em, wallet.id, cmd.providerId);
       const insertedInbox = receipt
         ? await reserveInbox(em, receipt, await dbNow(em, wallet))
         : false;
@@ -423,7 +420,13 @@ export class ProcessWager {
         return { result, idempotentReplay };
       };
       const recorded = await findExisting(em, cmd);
+      // An already-committed logical request must be ACK-able after a grant
+      // is revoked: it has no new financial effect and Inbox dedup still
+      // verifies the exact message payload before returning its snapshot.
       if (recorded) return finish(replay(recorded, hash), true);
+      // New queue commands require the same provider-wallet grant as HTTP.
+      // A failed grant rolls back the newly reserved Inbox row atomically.
+      if (receipt) await assertTrustedQueueProvider(em, wallet.id, cmd.providerId);
 
       const at = await dbNow(em, wallet);
       const tx = WagerTransaction.create({
