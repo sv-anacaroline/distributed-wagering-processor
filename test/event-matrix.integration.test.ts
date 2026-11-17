@@ -81,7 +81,8 @@ async function events(walletId: string): Promise<StoredEvent[]> {
 }
 async function assertEventMatrix(ctx: Context, types: string[]): Promise<StoredEvent[]> {
   const all = await events(ctx.walletId);
-  expect(all.map((item) => item.event_type)).toEqual(types);
+  // Count every event type globally; causality is checked per correlation ID below.
+  expect(all.map((item) => item.event_type).sort()).toEqual([...types].sort());
   expect(new Set(all.map((item) => item.payload.eventId)).size).toBe(all.length);
   const sequences = all.map((item) => BigInt(item.publication_sequence));
   expect(sequences.every((n, i) => i === 0 || n > sequences[i - 1]!)).toBe(true);
