@@ -42,7 +42,7 @@ async function bootstrap(): Promise<void> {
         count('wager_http_requests_total', labels);
         if (status >= 500 || status === 499) count('wager_http_errors_total', labels);
         const fields = { ...labels, duration_ms: Math.round(elapsed * 100) / 100 };
-        log(status >= 500 ? 'error' : 'info', 'http.request.completed', fields);
+        span.run(() => log(status >= 500 ? 'error' : 'info', 'http.request.completed', fields));
         span.end({ 'http.response.status_code': status, 'http.server.request.duration_ms': elapsed },
           status >= 500 ? new Error('HTTP server error') : undefined);
       };

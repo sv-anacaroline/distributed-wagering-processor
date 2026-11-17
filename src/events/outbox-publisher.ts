@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { count, duration, log, withSpan, currentTraceparent } from '../telemetry/otel.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { SendMessageCommand, type SQSClient } from '@aws-sdk/client-sqs';
 import type { EntityManager } from '@mikro-orm/postgresql';
@@ -12,6 +13,7 @@ export interface ClaimedEvent {
   readonly occurred_at: Date;
   readonly attempts: number;
   readonly claimToken: string;
+  readonly traceparent?: string | null;
 }
 type RawEvent = Omit<ClaimedEvent, 'claimToken'>;
 export interface PublishCycle {
@@ -25,8 +27,12 @@ export function eventMessage(
   event: Pick<ClaimedEvent, 'id' | 'aggregate_id' | 'payload'>,
   url: string,
 ): SendMessageCommand {
+  const traceparent = currentTraceparent();
   return new SendMessageCommand({
     QueueUrl: url,
+    ...(traceparent ? { MessageAttributes: {
+      traceparent: { DataType: 'String', StringValue: traceparent },
+    } } : {}),
     MessageBody: JSON.stringify(event.payload),
     MessageGroupId: event.aggregate_id,
     MessageDeduplicationId: event.id,
@@ -72,13 +78,18 @@ export class OutboxPublisher {
        update outbox_messages o set
          claimed_by=?, claim_expires_at=clock_timestamp() + (? * interval '1 second')
        from due where o.id=due.id
-       returning o.id,o.aggregate_id,o.event_type,o.payload,o.occurred_at,o.attempts`,
+       returning o.id,o.aggregate_id,o.event_type,o.payload,o.occurred_at,o.attempts,o.traceparent`,
       [batchSize, claimToken, OUTBOX_LEASE_SECONDS],
     );
     return due.map((row) => ({ ...row, claimToken }));
   }
 
   async publish(event: ClaimedEvent): Promise<boolean> {
+    return withSpan('outbox.publish', {
+      'messaging.system': 'aws.sqs', 'messaging.operation.name': 'publish',
+      event_type: event.event_type, event_id: event.id, wallet_id: event.aggregate_id,
+    }, async () => {
+    const startedAt = performance.now();
     const now = new Date();
     try {
       await this.sqs.send(eventMessage(event, this.queueUrl));
@@ -102,7 +113,13 @@ export class OutboxPublisher {
       );
       // An expired lease may lead to another publish: consumer eventId dedup
       // remains the authoritative safety net beyond the SQS 5-minute window.
-      return result.affectedRows === 1;
+      const success = result.affectedRows === 1;
+      count('wager_outbox_publish_total', { event_type: event.event_type, outcome: success ? 'published' : 'fenced' });
+      log(success ? 'info' : 'warn', 'outbox.publish.completed', {
+        event_type: event.event_type, event_id: event.id,
+        wallet_id: event.aggregate_id, outcome: success ? 'published' : 'fenced',
+      });
+      return success;
     } catch (error: unknown) {
       const state = OutboxMessage.rehydrate({
         id: event.id,
@@ -119,9 +136,18 @@ export class OutboxPublisher {
          where id=?::uuid and claimed_by=? and published_at is null`,
         [state.attempts, state.nextAttemptAt, event.id, event.claimToken],
       );
-      console.error('Outbox SQS send failed; event remains durable', event.id, error);
+      count('wager_outbox_publish_total', { event_type: event.event_type, outcome: 'retry' });
+      log('error', 'outbox.publish.failed', {
+        event_type: event.event_type, event_id: event.id,
+        error_type: error instanceof Error ? error.name : 'UnknownError',
+        attempts: state.attempts,
+      });
       return false;
+    } finally {
+      duration('wager_outbox_publish_duration_ms', performance.now() - startedAt,
+        { event_type: event.event_type });
     }
+    }, event.traceparent);
   }
 
   async release(event: ClaimedEvent): Promise<void> {
