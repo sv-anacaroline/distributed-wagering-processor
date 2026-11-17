@@ -131,6 +131,32 @@ async function publishWallet(walletId: string, expected: number): Promise<void> 
   }
   throw new Error('Outbox events did not become published for wallet ' + walletId);
 }
+async function verifyDeliveredEvent(event: Published): Promise<void> {
+  expect(event.eventId).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(event.aggregateId).toBeTruthy();
+  expect(event.correlationId).toBeTruthy();
+  expect(event.version).toBe(1);
+  expect(new Date(event.occurredAt).toISOString()).toBe(event.occurredAt);
+  const [saved] = await orm.em.execute<Array<{
+    payload: Published;
+    published_at: Date | null;
+  }>>(
+    `select payload,published_at from outbox_messages where id=?::uuid`,
+    [event.eventId],
+  );
+  // E2E proof: every SQS delivery matches exactly what was committed
+  // and marked published in PostgreSQL after the broker accepted it.
+  expect(saved?.published_at).toBeTruthy();
+  expect(event).toEqual(saved?.payload);
+}
+
+async function assertSourceAcked(): Promise<void> {
+  const afterAck = await sqs.send(new ReceiveMessageCommand({
+    QueueUrl: sourceUrl, MaxNumberOfMessages: 1, WaitTimeSeconds: 1,
+  }));
+  expect(afterAck.Messages ?? []).toHaveLength(0);
+}
+
 async function receiveEvents(walletId: string, expected: number, includeOpening = false): Promise<Published[]> {
   const found: Published[] = [];
   for (let i = deferredEvents.length - 1; i >= 0; i--) {
@@ -152,6 +178,7 @@ async function receiveEvents(walletId: string, expected: number, includeOpening 
     for (const item of batch.Messages ?? []) {
       if (!item.ReceiptHandle || !item.Body) throw new Error('Invalid published SQS delivery');
       const value = JSON.parse(item.Body) as Published;
+      await verifyDeliveredEvent(value);
       if (value.aggregateId === walletId) {
         expect(item.Attributes?.MessageGroupId).toBe(walletId);
         if (includeOpening || !value.correlationId.startsWith('opening:')) found.push(value);
@@ -236,6 +263,7 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     const body = envelope(cmd);
     await send(JSON.stringify(body), w.walletId);
     await consumeOne();
+    await assertSourceAcked();
     const [inbox] = await orm.em.execute<Array<{ processed_at: string | null }>>(
       'select processed_at from inbox_messages where consumer_name=? and message_id=?',
       ['wager-request-consumer', body.messageId],
