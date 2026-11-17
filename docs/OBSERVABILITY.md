@@ -162,11 +162,24 @@ em **17/11/2026** e validada na
   fora de ordem, rejeição, **17 eventos da Outbox publicados**, 7 lançamentos
   de ledger, saldo BRL 85.00, versão 7 e reconciliação correta.
 
-A execução confirma a ingestão entre processos, não apenas a existência
-dos arquivos YAML. O script `scripts/telemetry-smoke.sh` também está
-preparado para verificar o relacionamento entre trace IDs do consumidor
-SQS e do publisher da Outbox nas próximas execuções. Validação local da
-máquina do usuário depende de executar `bun run local:up`.
+### Validação final de correlação entre processos
+
+Na [execução #44010146919 do GitHub Actions](https://github.com/sv-anacaroline/distributed-wagering-processor/actions/runs/44010146919),
+com o commit `8cbad38` (após reforços de privacidade), a suíte real
+confirmou também que **o mesmo `trace_id` aparece no processamento
+financeiro e na publicação assíncrona da Outbox por workers distintos**:
+
+```text
+LOCAL READY: API=127.0.0.1:3000, Keycloak=127.0.0.1:8080, Grafana=127.0.0.1:3001
+TELEMETRY_DASHBOARD wagering-observability 16
+TELEMETRY_SMOKE_PASSED {"cross_worker_trace":true,"logs":true,"metrics":true,"traces":true}
+```
+
+O script exigiu ainda `traceparent` W3C válido nos **17 eventos duráveis da Outbox**,
+publicação confirmada e reconciliação exata do ledger. Isso valida, em
+ambiente descartável, a ingestão e a correlação reais entre os processos,
+não apenas os arquivos de configuração. A máquina do usuário pode ser
+verificada executando `bun run local:up` e `bash scripts/telemetry-smoke.sh`.
 
 ## Validação
 

@@ -83,3 +83,7 @@ Loki, traces em Tempo e métricas em Prometheus. O mesmo cenário
 verificou 17 eventos de Outbox publicados, saldo reconciliado, ledger
 imutável e todos os tipos de eventos financeiros. Consultar
 [o relatório de observabilidade](OBSERVABILITY.md).
+
+### Validação final: mesma identidade de trace entre workers
+
+Em [GitHub Actions #44010146919](https://github.com/sv-anacaroline/distributed-wagering-processor/actions/runs/44010146919), a observabilidade foi testada com serviços reais e o resultado foi `TELEMETRY_SMOKE_PASSED`, incluindo `cross_worker_trace=true`, `logs=true`, `metrics=true` e `traces=true`. Foram comprovados 16 painéis provisionados, 17 eventos publicados com `traceparent` persistido, execução de todas as operações e saldo reconciliado. Os checks principais de testes/qualidade do mesmo commit também foram aprovados em [GitHub Actions #44010154109](https://github.com/sv-anacaroline/distributed-wagering-processor/actions/runs/44010154109).
