@@ -228,6 +228,8 @@ services:
     profiles: [observability]
     image: grafana/loki:3.4.2
     command: ["-config.file=/etc/loki/config.yaml"]
+    ports:
+      - "127.0.0.1:${LOKI_PORT:-3100}:3100"
     volumes:
       - ./infra/observability/loki.yaml:/etc/loki/config.yaml:ro
       - loki_data:/loki
@@ -237,6 +239,8 @@ services:
     profiles: [observability]
     image: grafana/tempo:2.7.1
     command: ["-config.file=/etc/tempo/config.yaml"]
+    ports:
+      - "127.0.0.1:${TEMPO_PORT:-3200}:3200"
     volumes:
       - ./infra/observability/tempo.yaml:/etc/tempo/config.yaml:ro
       - tempo_data:/var/tempo

@@ -1,0 +1,41 @@
+name: Observability stack real smoke (optional)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/telemetry
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telemetry-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  telemetry:
+    name: Grafana Loki Tempo Prometheus end-to-end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      OTEL_ENABLED: "true"
+      OTEL_LOG_STDOUT: "true"
+      AWS_EMULATOR_IMAGE: ministackorg/ministack:1.5.40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Start local financial stack + dashboards and apply migrations
+        run: bash scripts/local-up.sh
+      - name: Prove real SQS events, OTLP traces, Loki logs and Prometheus metrics
+        run: bash scripts/telemetry-smoke.sh
+      - name: Capture diagnostics if observability startup fails
+        if: failure()
+        run: docker compose --profile full --profile observability logs --tail=130 grafana loki tempo otel-collector prometheus api wager-sqs-consumer wager-outbox-publisher || true
+      - name: Shut down only ephemeral CI volumes
+        if: always()
+        run: docker compose --profile full --profile observability down -v --remove-orphans

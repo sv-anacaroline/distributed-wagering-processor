@@ -142,7 +142,8 @@ export function log(level: 'debug' | 'info' | 'warn' | 'error', message: string,
     ...(ctx ? { trace_id: ctx.traceId, span_id: ctx.spanId } : {}),
     ...Object.fromEntries(Object.entries(values).filter(([,v]) => v !== undefined && v !== null)),
   };
-  if (process.env.OTEL_LOG_STDOUT !== 'false') {
+  if (process.env.OTEL_LOG_STDOUT === 'true' ||
+    (process.env.OTEL_LOG_STDOUT !== 'false' && process.env.NODE_ENV !== 'test')) {
     const line = JSON.stringify(content);
     if (level === 'error') console.error(line);
     else if (level === 'warn') console.warn(line);

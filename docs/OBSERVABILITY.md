@@ -17,7 +17,7 @@ motivo para desfazer uma transação de dinheiro.
 | Dashboard central | [http://localhost:3001/d/wagering-observability](http://localhost:3001/d/wagering-observability) | HTTP, erros, SQS, retries, eventos, saúde e logs |
 | Prometheus | [http://localhost:9090](http://localhost:9090) | Métricas agregadas e latência por rota |
 | OTLP/HTTP | http://localhost:4318 | Entrada padrão de logs, traces e métricas; collector recebe na rede Docker |
-| Loki / Tempo | Grafana Explore | Armazenamento de logs OTLP nativos / traces OTLP |
+| Loki / Tempo | Grafana Explore (também localhost:3100 / localhost:3200 para diagnóstico) | Armazenamento de logs OTLP nativos / traces OTLP |
 
 Grafana utiliza o login de desenvolvimento `admin / local-grafana-change-me`.
 O acesso está restrito a `127.0.0.1`; **troque as credenciais e configure
@@ -138,8 +138,8 @@ consulta PostgreSQL e SQS assinando a solicitação com credenciais AWS.
 - Não são registrados corpos JSON de apostas, saldos, tokens JWT, cabeçalhos
   Authorization, connection strings ou segredos. Logs de falha carregam
   `error_type` e código, e o corpo público da exceção segue sanitizado.
-- O endpoint OTLP, Prometheus e Grafana só expõe portas na interface
-  `127.0.0.1`; Loki e Tempo não têm portas públicas.
+- OTLP, Prometheus, Grafana, Loki e Tempo expõem portas de diagnóstico **somente**
+  em `127.0.0.1` (não em interfaces públicas).
 - Falha na transmissão de métricas/logs/spans gera alerta estruturado
   `otel.export.failed` no stdout, sem mudar estado financeiro.
 - Persistência local tem volumes próprios para Loki, Tempo, Prometheus e
