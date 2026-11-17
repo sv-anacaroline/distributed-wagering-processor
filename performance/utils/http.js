@@ -138,7 +138,7 @@ export function financialIteration() {
   betLatency.add(Date.now() - start);
   const succeeded = responses.filter((r) => r.status === 200);
   const denied = responses.filter((r) => r.status === 422);
-  const winningCommand = responses[0].status === 200 ? first : second;
+  const winningCommand = responses[0]?.status === 200 ? first : second;
   const win = json(succeeded[0]);
   const reject = json(denied[0]);
   const oneWinner =

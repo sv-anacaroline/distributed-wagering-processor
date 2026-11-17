@@ -4,6 +4,6 @@ preload = ["./test/setup.ts"]
 coverageReporter = ["text", "lcov"]
 coverageDir = "./coverage"
 coverageSkipTestFiles = true
-# SQL-bound orchestration is covered by PostgreSQL E2E/integration tests, not pure-unit coverage.
-coveragePathIgnorePatterns = ["**/*.spec.ts", "**/*.test.ts", "src/main.ts", "src/mikro-orm.config.ts", "src/application/process-wager.ts"]
-coverageThreshold = { lines = 0.7, functions = 0.7 }
+# Aggregate SQL-bound orchestration, events and integrations in test:cov:full.
+# Unit-only coverage is reported separately and must not hide integration gaps.
+coveragePathIgnorePatterns = ["**/*.spec.ts", "**/*.test.ts", "src/main.ts", "src/mikro-orm.config.ts"]

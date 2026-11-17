@@ -17,7 +17,7 @@
     "typecheck": "bunx --bun tsc --noEmit",
     "test": "bun test ./src",
     "test:watch": "bun test --watch ./src",
-    "test:cov": "bun test --coverage ./src",
+    "test:cov": "bun run test:cov:full",
     "test:e2e": "bun test ./test",
     "test:load": "bun run test:load:smoke",
     "db:debug": "bunx --bun mikro-orm debug --config ./src/mikro-orm.config.ts",
@@ -42,7 +42,10 @@
     "worker:sqs": "bun src/jobs/consume-wager-sqs.ts",
     "worker:outbox": "bun src/jobs/publish-outbox.ts",
     "test:events:e2e": "bun test ./test/sqs-inbox.integration.test.ts ./test/sqs-events.integration.test.ts",
-    "test:auth:e2e": "AUTH_E2E=1 bun test ./test/auth-keycloak.e2e.test.ts"
+    "test:auth:e2e": "AUTH_E2E=1 bun test ./test/auth-keycloak.e2e.test.ts",
+    "test:cov:unit": "bun test --coverage ./src",
+    "test:cov:full": "bun test --coverage ./src ./test",
+    "test:load:hot-wallet": "mkdir -p performance/results && K6_UID=$(id -u) K6_GID=$(id -g) docker compose -f docker-compose.yml -f docker-compose.k6.yml --profile performance run --rm -e K6_SCENARIO=hot-wallet k6 run /scripts/scenarios/hot-wallet.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.4.0",
