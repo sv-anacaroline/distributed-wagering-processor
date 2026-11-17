@@ -57,7 +57,10 @@ describe('OIDC JWT verification', () => {
   });
   it('rejects missing or invalid signatures', () => {
     expect(() => verify('bad-token')).toThrow(UnauthorizedException);
-    expect(() => verify(token().slice(0, -2) + 'xx')).toThrow(UnauthorizedException);
+    const [header, payload, signature = ''] = token().split('.');
+    const changedFirst = signature.startsWith('A') ? 'B' : 'A';
+    const tampered = `${header}.${payload}.${changedFirst}${signature.slice(1)}`;
+    expect(() => verify(tampered)).toThrow(UnauthorizedException);
   });
   it('rejects expired, early, wrong issuer and wrong audience JWTs', () => {
     for (const claims of [
