@@ -8,6 +8,7 @@ import {
 } from '@aws-sdk/client-sqs';
 import { InvalidSqsMessageError } from './wager-request.js';
 import { TransientProcessingError } from '../application/process-wager.js';
+import { ProviderWalletMismatchError } from '../domain/errors.js';
 import {
   SqsWagerConsumer,
   isPermanentWagerError,
@@ -250,5 +251,27 @@ describe('SQS wager worker delivery policy', () => {
     ).toBe(false);
     expect(receiveCount(message(payload(), '-5'))).toBe(1);
     expect(retryVisibilitySeconds(5)).toBe(16);
+  });
+  it('DLQs a provider-wallet authorization failure before touching the ledger again', async () => {
+    const { worker, sent } = setup(() =>
+      Promise.reject(new ProviderWalletMismatchError()),
+    );
+    expect(await worker.processOne(message())).toBe('dlq');
+    expect(sent[0]).toBeInstanceOf(SendMessageCommand);
+    expect(sent[1]).toBeInstanceOf(DeleteMessageCommand);
+    const dlq = sent[0] as SendMessageCommand;
+    expect(dlq.input.MessageAttributes?.failureKind?.StringValue).toBe('PERMANENT');
+  });
+
+  it('refuses a message with no SQS receipt handle instead of ACKing it', async () => {
+    const { worker, sent } = setup(() => Promise.resolve({}));
+    let error: unknown;
+    try {
+      await worker.processOne({ Body: payload() });
+    } catch (caught: unknown) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(sent).toHaveLength(0);
   });
 });
