@@ -40,12 +40,12 @@ describe('provider-to-wallet grants', () => {
       else process.env.HTTP_AUTH_MODE = previousAuth;
     }
   });
-  it('does not allow the monitoring OAuth client to use an otherwise valid wallet grant', async () => {
+  it('does not allow the monitoring OAuth client to use an otherwise valid wallet grant', () => {
     const old = process.env.HTTP_AUTH_MODE;
     process.env.HTTP_AUTH_MODE = 'oidc';
     try {
       const { service, calls } = check([{ allowed: 1 }]);
-      await expect(service.assertAllowed('wallet-id', 'wagering-monitor')).rejects.toThrow(
+      expect(service.assertAllowed('wallet-id', 'wagering-monitor')).rejects.toThrow(
         ForbiddenException,
       );
       expect(calls).toHaveLength(0);

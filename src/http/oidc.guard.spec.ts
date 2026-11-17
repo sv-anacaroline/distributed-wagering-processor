@@ -77,12 +77,8 @@ describe('OIDC JWT verification', () => {
     try {
       expect(() => assertFinancialProviderIdentity('provider-a')).not.toThrow();
       expect(() => assertFinancialProviderIdentity('provider-b')).not.toThrow();
-      expect(() => assertFinancialProviderIdentity('wagering-monitor')).toThrow(
-        ForbiddenException,
-      );
-      expect(() => assertFinancialProviderIdentity('unknown-service')).toThrow(
-        ForbiddenException,
-      );
+      expect(() => assertFinancialProviderIdentity('wagering-monitor')).toThrow(ForbiddenException);
+      expect(() => assertFinancialProviderIdentity('unknown-service')).toThrow(ForbiddenException);
       expect(() => assertFinancialProviderIdentity()).toThrow(ForbiddenException);
     } finally {
       if (mode === undefined) delete process.env.HTTP_AUTH_MODE;
