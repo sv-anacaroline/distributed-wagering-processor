@@ -35,11 +35,11 @@ const payload = (changes: Record<string, unknown> = {}) =>
       ...changes,
     },
   });
-const message = (body = payload(), attempts = '1'): Message => ({
+const message = (body = payload(), attempts = '1', groupId = walletId): Message => ({
   Body: body,
   MessageId: 'aws-id',
   ReceiptHandle: 'handle',
-  Attributes: { ApproximateReceiveCount: attempts },
+  Attributes: { ApproximateReceiveCount: attempts, MessageGroupId: groupId },
 });
 const queues = { incoming: 'http://sqs/request', deadLetter: 'http://sqs/dlq' };
 type SentCommand =
@@ -166,7 +166,7 @@ describe('SQS wager worker delivery policy', () => {
   });
   it('waits for every delivery to settle before reporting a batch failure', async () => {
     let completed = false;
-    const source = [message('invalid-body'), message(payload())];
+    const source = [message('invalid-body'), message(payload(), '1', 'other-wallet')];
     const sqs = {
       send: (cmd: SentCommand): Promise<unknown> => {
         if (cmd instanceof ReceiveMessageCommand) return Promise.resolve({ Messages: source });
@@ -190,6 +190,54 @@ describe('SQS wager worker delivery policy', () => {
     expect(failed).toBeInstanceOf(AggregateError);
     expect(completed).toBe(true);
   });
+  it('does not start the next FIFO delivery of the same group until the first is acknowledged', async () => {
+    let release!: () => void;
+    let calls = 0;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { worker, sent } = setup(async () => {
+      calls++;
+      if (calls === 1) await gate;
+      return {} as never;
+    }, [message(), message(payload())]);
+    const run = worker.runOnce();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls).toBe(1);
+    release();
+    expect(await run).toEqual(['ack', 'ack']);
+    expect(calls).toBe(2);
+    expect(sent.filter(cmd => cmd instanceof DeleteMessageCommand)).toHaveLength(2);
+  });
+
+  it('allows independent FIFO groups to advance while another group is blocked', async () => {
+    let release!: () => void;
+    let started = 0;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { worker } = setup(async () => {
+      started++;
+      if (started === 1) await gate;
+      return {} as never;
+    }, [message(payload(), '1', 'wallet-A'), message(payload(), '1', 'wallet-B')]);
+    const run = worker.runOnce();
+    for (let i = 0; i < 10 && started < 2; i++) await Promise.resolve();
+    expect(started).toBe(2);
+    release();
+    expect(await run).toEqual(['ack', 'ack']);
+  });
+
+  it('releases later same-group deliveries on transient retry without executing them', async () => {
+    let calls = 0;
+    const { worker, sent } = setup(() => {
+      calls++;
+      return Promise.reject(new Error('temporary SQL outage'));
+    }, [message(), message(payload())]);
+    expect(await worker.runOnce()).toEqual(['retry', 'released']);
+    expect(calls).toBe(1);
+    const updates = sent.filter((cmd) => cmd instanceof ChangeMessageVisibilityCommand);
+    expect(updates).toHaveLength(2);
+    expect((updates[1] as ChangeMessageVisibilityCommand).input.VisibilityTimeout).toBe(0);
+  });
+
   it('distinguishes permanent domain messages from transient outages', () => {
     expect(isPermanentWagerError(new InvalidSqsMessageError('bad'))).toBe(true);
     expect(isPermanentWagerError(new Error('network'))).toBe(false);

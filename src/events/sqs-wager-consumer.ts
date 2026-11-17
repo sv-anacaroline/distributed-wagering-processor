@@ -146,14 +146,46 @@ export class SqsWagerConsumer {
         MaxNumberOfMessages: 10,
         WaitTimeSeconds: 1,
         VisibilityTimeout: 60,
-        MessageSystemAttributeNames: ['ApproximateReceiveCount'],
+        MessageSystemAttributeNames: ['ApproximateReceiveCount', 'MessageGroupId'],
       }),
       { ...(signal ? { abortSignal: signal } : {}) },
     );
     const messages = received.Messages ?? [];
-    // All operations settle before the next batch; no unobserved promises on shutdown.
+    // FIFO may return multiple messages for a single MessageGroupId. Complete
+    // each message (including ACK) before starting the next in that group,
+    // while independent groups advance concurrently.
+    const grouped = new Map<string, Array<{ message: Message; index: number }>>();
+    for (const [index, message] of messages.entries()) {
+      const groupId = message.Attributes?.MessageGroupId ?? `isolated-${index}`;
+      const entries = grouped.get(groupId) ?? [];
+      entries.push({ message, index });
+      grouped.set(groupId, entries);
+    }
+    const outcomes: MessageOutcome[] = Array.from(messages, () => 'released');
     const settled = await Promise.allSettled(
-      messages.map((message) => this.processOne(message, signal)),
+      [...grouped.values()].map(async (entries) => {
+        let blocked = false;
+        const errors: unknown[] = [];
+        for (const { message, index } of entries) {
+          if (blocked) {
+            if (message.ReceiptHandle) {
+              try { await this.release(message.ReceiptHandle); }
+              catch (error: unknown) { errors.push(error); }
+            }
+            outcomes[index] = 'released';
+            continue;
+          }
+          try {
+            const outcome = await this.processOne(message, signal);
+            outcomes[index] = outcome;
+            if (outcome === 'retry' || outcome === 'released') blocked = true;
+          } catch (error: unknown) {
+            errors.push(error);
+            blocked = true;
+          }
+        }
+        if (errors.length) throw new AggregateError(errors, 'FIFO group processing failed');
+      }),
     );
     const failures: unknown[] = [];
     for (const item of settled) {
@@ -165,10 +197,7 @@ export class SqsWagerConsumer {
         'One or more SQS messages could not be acknowledged or dead-lettered',
       );
     }
-    return settled.map((item) => {
-      if (item.status !== 'fulfilled') throw new Error('Unreachable SQS settlement');
-      return item.value;
-    });
+    return outcomes;
   }
 
   async run(signal: AbortSignal): Promise<void> {
