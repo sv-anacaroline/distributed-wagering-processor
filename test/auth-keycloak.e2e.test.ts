@@ -36,9 +36,9 @@ async function token(clientId: string, clientSecret: string): Promise<string> {
 suite('Keycloak client credentials — real HTTP authorization and PostgreSQL', () => {
   beforeAll(async () => {
     process.env.HTTP_AUTH_MODE = 'oidc';
-    process.env.OIDC_ISSUER ??= `${realm}/realms/wagering`;
-    process.env.OIDC_JWKS_URL ??= `${realm}/realms/wagering/protocol/openid-connect/certs`;
-    process.env.OIDC_AUDIENCE ??= 'wagering-api';
+    process.env.OIDC_ISSUER ||= `${realm}/realms/wagering`;
+    process.env.OIDC_JWKS_URL ||= `${realm}/realms/wagering/protocol/openid-connect/certs`;
+    process.env.OIDC_AUDIENCE ||= 'wagering-api';
     aToken = await token(
       'provider-a',
       process.env.KEYCLOAK_PROVIDER_A_SECRET ?? 'local-provider-a-change-me',
