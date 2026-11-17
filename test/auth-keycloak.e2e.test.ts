@@ -66,7 +66,7 @@ suite('Keycloak client credentials — real HTTP authorization and PostgreSQL', 
       .set('Authorization', 'Bearer ' + aToken)
       .send({ playerId: randomUUID(), initialBalance: { amount: '100.00', currency: 'BRL' } })
       .expect(201);
-    const wallet = walletResponse.body as { id: string; balance: { amount: string } };
+    const wallet = walletResponse.body as { id: string; playerId: string; balance: { amount: string } };
     expect(wallet.balance.amount).toBe('100.00');
     await request(http).get('/wallets/' + wallet.id)
       .set('Authorization', 'Bearer ' + aToken).expect(200);
@@ -80,7 +80,7 @@ suite('Keycloak client credentials — real HTTP authorization and PostgreSQL', 
     const externalId = randomUUID();
     const command = {
       providerId: 'provider-a', externalTransactionId: externalId,
-      playerId: walletResponse.body.playerId as string,
+      playerId: wallet.playerId,
       walletId: wallet.id, roundId: 'round-a', gameId: 'game-a',
       kind: 'BET', money: { amount: '25.00', currency: 'BRL' },
     };
@@ -94,13 +94,14 @@ suite('Keycloak client credentials — real HTTP authorization and PostgreSQL', 
     const processed = await request(http).post('/wagering/transactions')
       .set('Authorization', 'Bearer ' + aToken).set('Idempotency-Key', key)
       .send(command).expect(200);
-    expect(processed.body.status).toBe('PROCESSED');
-    expect(processed.body.balance.amount).toBe('75.00');
+    const result = processed.body as { status: string; balance: { amount: string }; transactionId: string };
+    expect(result.status).toBe('PROCESSED');
+    expect(result.balance.amount).toBe('75.00');
     const replay = await request(http).post('/wagering/transactions')
       .set('Authorization', 'Bearer ' + aToken).set('Idempotency-Key', key)
       .send(command).expect(200);
-    expect(replay.body.idempotentReplay).toBe(true);
-    const id = processed.body.transactionId as string;
+    expect((replay.body as { idempotentReplay: boolean }).idempotentReplay).toBe(true);
+    const id = result.transactionId;
     await request(http).get('/wagering/transactions/' + id)
       .set('Authorization', 'Bearer ' + bToken).expect(403);
     await request(http).get('/providers/provider-a/wagering/transactions/' + externalId)
@@ -109,8 +110,9 @@ suite('Keycloak client credentials — real HTTP authorization and PostgreSQL', 
       .set('Authorization', 'Bearer ' + aToken).expect(200);
     const current = await request(http).get('/wallets/' + wallet.id)
       .set('Authorization', 'Bearer ' + aToken).expect(200);
-    expect(current.body.balance.amount).toBe('75.00');
-    expect(current.body.version).toBe(2);
+    const currentWallet = current.body as { balance: { amount: string }; version: number };
+    expect(currentWallet.balance.amount).toBe('75.00');
+    expect(currentWallet.version).toBe(2);
   });
 
   it('restricts operational metrics to the dedicated monitoring client', async () => {

@@ -32,8 +32,8 @@ describe('provider-to-wallet grants', () => {
     process.env.HTTP_AUTH_MODE = 'oidc';
     try {
       const { service, calls } = check([]);
-      await expect(service.assertAllowed('wallet-id', 'provider-b')).rejects.toThrow(ForbiddenException);
-      await expect(service.assertAllowed('wallet-id')).rejects.toThrow(ForbiddenException);
+      expect(service.assertAllowed('wallet-id', 'provider-b')).rejects.toThrow(ForbiddenException);
+      expect(service.assertAllowed('wallet-id')).rejects.toThrow(ForbiddenException);
       expect(calls).toEqual([['wallet-id', 'provider-b']]);
     } finally {
       if (previousAuth === undefined) delete process.env.HTTP_AUTH_MODE;
@@ -48,7 +48,7 @@ describe('provider-to-wallet grants', () => {
       await service.assertAllowed('wallet-id');
       expect(calls).toHaveLength(0);
       process.env.NODE_ENV = 'production';
-      await expect(service.assertAllowed('wallet-id')).rejects.toThrow(ForbiddenException);
+      expect(service.assertAllowed('wallet-id')).rejects.toThrow(ForbiddenException);
     } finally {
       if (previousAuth === undefined) delete process.env.HTTP_AUTH_MODE;
       else process.env.HTTP_AUTH_MODE = previousAuth;

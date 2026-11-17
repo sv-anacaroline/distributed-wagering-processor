@@ -24,7 +24,7 @@ export interface OidcClaims {
   /** Custom provider claim issued by the external IdP, never trusted from request JSON. */
   readonly provider_id?: string;
   /** Keycloak authorized party (the OAuth client ID). */
-  readonly azp?: string;
+  readonly azp: string;
 }
 interface JwtHeader {
   readonly alg?: string;

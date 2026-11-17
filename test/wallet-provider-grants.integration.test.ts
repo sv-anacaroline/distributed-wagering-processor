@@ -20,7 +20,7 @@ describe('PostgreSQL provider grants', () => {
     process.env.HTTP_AUTH_MODE = 'oidc';
     try {
       await access.assertAllowed(opened.id, 'provider-a');
-      await expect(access.assertAllowed(opened.id, 'provider-b')).rejects.toThrow(ForbiddenException);
+      expect(access.assertAllowed(opened.id, 'provider-b')).rejects.toThrow(ForbiddenException);
       await orm.em.execute(
         'insert into wallet_provider_grants(wallet_id,provider_id) values (?::uuid,?)',
         [opened.id, 'provider-b'],
