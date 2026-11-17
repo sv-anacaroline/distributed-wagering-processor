@@ -277,10 +277,10 @@ describe('SQS wager worker delivery policy', () => {
     const { worker } = setup(() => Promise.resolve());
     const controller = new AbortController();
     let cycles = 0;
-    worker.runOnce = async () => {
+    worker.runOnce = () => {
       cycles++;
       controller.abort();
-      return [];
+      return Promise.resolve([]);
     };
     await worker.run(controller.signal);
     expect(cycles).toBe(1);
@@ -290,10 +290,10 @@ describe('SQS wager worker delivery policy', () => {
     const { worker } = setup(() => Promise.resolve());
     const controller = new AbortController();
     let cycles = 0;
-    worker.runOnce = async () => {
+    worker.runOnce = () => {
       cycles++;
       controller.abort();
-      throw new Error('ReceiveMessage interrupted by SIGTERM');
+      return Promise.reject(new Error('ReceiveMessage interrupted by SIGTERM'));
     };
     await worker.run(controller.signal);
     expect(cycles).toBe(1);

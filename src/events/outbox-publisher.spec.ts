@@ -148,10 +148,10 @@ describe('transactional outbox publisher', () => {
     const { publisher } = fake(() => Promise.resolve({}), []);
     const controller = new AbortController();
     let cycles = 0;
-    publisher.runOnce = async () => {
+    publisher.runOnce = () => {
       cycles++;
       controller.abort();
-      return { claimed: 0, published: 0, retried: 0 };
+      return Promise.resolve({ claimed: 0, published: 0, retried: 0 });
     };
     await publisher.run(controller.signal, 1);
     expect(cycles).toBe(1);
@@ -161,10 +161,10 @@ describe('transactional outbox publisher', () => {
     const { publisher } = fake(() => Promise.resolve({}), []);
     const controller = new AbortController();
     let cycles = 0;
-    publisher.runOnce = async () => {
+    publisher.runOnce = () => {
       cycles++;
       controller.abort();
-      throw new Error('PostgreSQL temporarily unavailable');
+      return Promise.reject(new Error('PostgreSQL temporarily unavailable'));
     };
     await publisher.run(controller.signal, 1);
     expect(cycles).toBe(1);
