@@ -41,6 +41,7 @@ interface Published {
   readonly eventId: string;
   readonly eventType: string;
   readonly aggregateId: string;
+  readonly correlationId: string;
   readonly data: Record<string, unknown>;
   readonly occurredAt: string;
   readonly version: number;
@@ -118,7 +119,8 @@ async function n(sql: string, args: unknown[] = []): Promise<number> {
 async function outboxCount(walletId: string, published = false): Promise<number> {
   return n(
     `select count(*)::integer as n from outbox_messages
-     where aggregate_id=?::uuid ${published ? 'and published_at is not null' : ''}`,
+     where aggregate_id=?::uuid and payload->>'correlationId' not like 'opening:%'
+     ${published ? 'and published_at is not null' : ''}`,
     [walletId],
   );
 }
@@ -129,12 +131,12 @@ async function publishWallet(walletId: string, expected: number): Promise<void> 
   }
   throw new Error('Outbox events did not become published for wallet ' + walletId);
 }
-async function receiveEvents(walletId: string, expected: number): Promise<Published[]> {
+async function receiveEvents(walletId: string, expected: number, includeOpening = false): Promise<Published[]> {
   const found: Published[] = [];
   for (let i = deferredEvents.length - 1; i >= 0; i--) {
     const item = deferredEvents[i];
     if (item?.aggregateId === walletId) {
-      found.push(item);
+      if (includeOpening || !item.correlationId.startsWith('opening:')) found.push(item);
       deferredEvents.splice(i, 1);
     }
   }
@@ -152,7 +154,7 @@ async function receiveEvents(walletId: string, expected: number): Promise<Publis
       const value = JSON.parse(item.Body) as Published;
       if (value.aggregateId === walletId) {
         expect(item.Attributes?.MessageGroupId).toBe(walletId);
-        found.push(value);
+        if (includeOpening || !value.correlationId.startsWith('opening:')) found.push(value);
       } else {
         deferredEvents.push(value);
       }
@@ -194,6 +196,38 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       sqs.destroy();
     }
     if (orm) await orm.close(true);
+  }, 60_000);
+
+  it('publishes OPENING and WalletBalanceChanged in causal SQL/FIFO order', async () => {
+    const w = await wallet('100.00');
+    const rows = await orm.em.execute<Array<{
+      publication_sequence: string;
+      event_type: string;
+    }>>(
+      `select publication_sequence::text as publication_sequence,event_type
+       from outbox_messages where aggregate_id=?::uuid order by publication_sequence`,
+      [w.walletId],
+    );
+    expect(rows.map(row => row.event_type)).toEqual([
+      'WagerTransactionProcessed', 'WalletBalanceChanged',
+    ]);
+    expect(BigInt(rows[0]?.publication_sequence ?? '0')).toBeLessThan(
+      BigInt(rows[1]?.publication_sequence ?? '0'),
+    );
+    for (let i = 0; i < 30; i++) {
+      await publisher.runOnce();
+      const [status] = await orm.em.execute<Array<{ n: number }>>(
+        `select count(*)::integer as n from outbox_messages
+         where aggregate_id=?::uuid and published_at is not null`, [w.walletId],
+      );
+      if (status?.n === 2) break;
+    }
+    const received = await receiveEvents(w.walletId, 2, true);
+    expect(received.map(item => item.eventType)).toEqual([
+      'WagerTransactionProcessed', 'WalletBalanceChanged',
+    ]);
+    expect(received[0]?.data.kind).toBe('OPENING');
+    expect(received[1]?.data.balanceAfter).toEqual({ amount: '100.00', currency: 'BRL' });
   }, 60_000);
 
   it('commits BET/Inbox/ledger/outbox before ACK and publishes two versioned events', async () => {

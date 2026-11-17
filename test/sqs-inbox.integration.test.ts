@@ -62,7 +62,7 @@ async function count(
     table === 'inbox_messages'
       ? `select count(*)::integer as n from inbox_messages where consumer_name='wager-request-consumer' and message_id in
       (select message_id from inbox_messages where consumer_name='wager-request-consumer')`
-      : `select count(*)::integer as n from ${table} where ${table === 'outbox_messages' ? 'aggregate_id' : 'wallet_id'}=?::uuid`;
+      : `select count(*)::integer as n from ${table} where ${table === 'outbox_messages' ? 'aggregate_id' : 'wallet_id'}=?::uuid${table === 'outbox_messages' ? " and payload->>'correlationId' not like 'opening:%'" : ''}`;
   const [row] = await orm.em.execute<Array<{ n: number }>>(
     query,
     table === 'inbox_messages' ? [] : [walletId],
