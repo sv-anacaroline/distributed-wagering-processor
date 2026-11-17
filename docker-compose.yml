@@ -183,7 +183,13 @@ services:
     image: hashicorp/terraform:1.13.5
     entrypoint: ["/bin/sh", "-ec"]
     command:
-      - terraform -chdir=/infra init -input=false && terraform -chdir=/infra apply -auto-approve -input=false
+      - |
+        # The Terraform source is read-only; init needs a writable directory
+        # to write its provider lockfile. Keep generated files out of Git.
+        mkdir -p /tmp/terraform-local
+        cp -R /infra/. /tmp/terraform-local/
+        terraform -chdir=/tmp/terraform-local init -input=false
+        terraform -chdir=/tmp/terraform-local apply -auto-approve -input=false
     volumes:
       - ./infra/terraform/local:/infra:ro
       - terraform_local_state:/state

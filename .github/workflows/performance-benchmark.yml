@@ -1,0 +1,64 @@
+name: On-demand financial k6 benchmark (not a merge gate)
+
+# The one-time branch bootstrap permits measuring this PR before merge. Once
+# merged, this workflow is manual-only on master and is never a required check.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/test-coverage-k6
+    paths:
+      - .github/workflows/performance-benchmark.yml
+      - scripts/run-performance.sh
+      - scripts/local-up.sh
+      - scripts/local-verify.sh
+      - scripts/local-events.ts
+      - docker-compose.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: on-demand-benchmark-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  performance:
+    name: Independent k6 financial benchmark (optional)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      K6_ENVIRONMENT: github-actions-ubuntu-24.04
+      K6_VUS: "2"
+      K6_DURATION: "8s"
+      K6_STAGE_DURATION: "6s"
+      K6_SOAK_DURATION: "20s"
+      AWS_EMULATOR_IMAGE: ministackorg/ministack:1.5.40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+      - name: Bring up the exact documented local environment
+        run: bash scripts/local-up.sh
+      - name: Validate every SQS wager kind, Outbox publication, ledger and reconciliation
+        run: |
+          mkdir -p performance/results
+          bash scripts/local-verify.sh | tee performance/results/local-events.json
+      - name: Measure six k6 scenarios against real authenticated HTTP APIs
+        run: bash scripts/run-performance.sh
+      - name: Upload complete JSON and logs (independent of test outcome)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: measured-k6-performance
+          path: performance/results
+          if-no-files-found: warn
+      - name: Capture failed service diagnostics
+        if: failure()
+        run: docker compose --profile full logs --tail=90 api postgres aws-emulator keycloak terraform-local || true
+      - name: Shut down disposable benchmark environment
+        if: always()
+        run: docker compose --profile full down -v --remove-orphans

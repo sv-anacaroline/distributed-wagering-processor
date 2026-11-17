@@ -108,4 +108,65 @@ describe('transactional outbox publisher', () => {
     expect(caught).toBeInstanceOf(Error);
     expect((await publisher.claim(1)).length).toBe(1);
   });
+  it('fences an expired outbox owner even when its SQS send succeeds', async () => {
+    const db = {
+      fork: () => ({ execute: () => Promise.resolve({ affectedRows: 0 }) }),
+    };
+    const sent: SendMessageCommand[] = [];
+    const sqs = {
+      send: (command: SendMessageCommand): Promise<unknown> => {
+        sent.push(command);
+        return Promise.resolve({});
+      },
+    };
+    const publisher = new OutboxPublisher(db as never, sqs as never, 'events');
+    expect(await publisher.publish(event())).toBe(false);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.input.MessageDeduplicationId).toBe(eventId);
+  });
+
+  it('retains the event if SQS accepts it but marking published fails', async () => {
+    const updates: string[] = [];
+    const db = {
+      fork: () => ({
+        execute: (sql: string): Promise<unknown> => {
+          updates.push(sql);
+          if (sql.includes('set published_at=')) {
+            return Promise.reject(new Error('PostgreSQL interrupted after SQS send'));
+          }
+          return Promise.resolve({ affectedRows: 1 });
+        },
+      }),
+    };
+    const sqs = { send: () => Promise.resolve({}) };
+    const publisher = new OutboxPublisher(db as never, sqs as never, 'events');
+    expect(await publisher.publish(event())).toBe(false);
+    expect(updates.some((sql) => sql.includes('set attempts='))).toBe(true);
+  });
+
+  it('ends its polling loop after SIGTERM without claiming another event', async () => {
+    const { publisher } = fake(() => Promise.resolve({}), []);
+    const controller = new AbortController();
+    let cycles = 0;
+    publisher.runOnce = () => {
+      cycles++;
+      controller.abort();
+      return Promise.resolve({ claimed: 0, published: 0, retried: 0 });
+    };
+    await publisher.run(controller.signal, 1);
+    expect(cycles).toBe(1);
+  });
+
+  it('survives a publish-cycle failure and stops on SIGTERM', async () => {
+    const { publisher } = fake(() => Promise.resolve({}), []);
+    const controller = new AbortController();
+    let cycles = 0;
+    publisher.runOnce = () => {
+      cycles++;
+      controller.abort();
+      return Promise.reject(new Error('PostgreSQL temporarily unavailable'));
+    };
+    await publisher.run(controller.signal, 1);
+    expect(cycles).toBe(1);
+  });
 });

@@ -226,44 +226,76 @@ Para simular três processos independentes da aplicação:
 docker compose --profile distributed up --build -d --scale api-replica=2
 ```
 
-Isso **não prova** a correção concorrente: o domínio e o schema estão prontos, mas os casos de uso com locks SQL, consumidores e workers ainda serão implementados.
+Os testes de concorrência comprovam disputa por saldo com três processos Bun
+independentes e PostgreSQL real. Os workers de SQS, retry e Outbox já estão implementados.
+
+## Execução local completa (API, Keycloak e workers)
+
+```bash
+bun run local:up         # sobe PostgreSQL, SQS FIFO, Terraform, IdP e três workers
+bun run local:status     # mostra o estado dos containers
+bun run local:verify     # E2E real com eventos SQS, Outbox, ledger e reconciliação
+bun run local:wallet     # cria carteira e mostra walletId/playerId
+bun run local:event -- BET <walletId> <playerId> 25.00
+bun run local:event -- WIN <walletId> <playerId> 5.00
+bun run local:event -- LOSS <walletId> <playerId> 1.00
+bun run local:event -- REFUND <walletId> <playerId> 25.00 <externalTransactionId-da-BET>
+bun run local:event -- ROLLBACK <walletId> <playerId> 25.00 <externalTransactionId-da-REFUND>
+bun run local:down       # não exclui volumes/dados
+```
+
+A rotina `local:up` é repetível: inicia a infraestrutura, aplica migrations
+**antes** de iniciar os workers e aguarda readiness de PostgreSQL, SQS e IdP.
+O `local:verify` percorre os cinco tipos externos, a abertura interna,
+rejeição, referência pendente fora de ordem e resolução pelo worker. Todos os
+comandos `local:event` geram mensagens SQS FIFO reais; eventos de saída só
+são criados pelo domínio via Transactional Outbox.
+
+**Segurança:** scripts de emissão rejeitam `NODE_ENV=production` e endpoints
+SQS não locais. Não execute `docker compose down -v` em um ambiente com
+dados que queira preservar; `local:down` apenas para os containers.
 
 ## Qualidade de código e testes
 
-A configuração em [docs/CODE_QUALITY.md](docs/CODE_QUALITY.md) descreve EditorConfig,
-ESLint com type-check, TypeScript strict, Prettier e testes com Bun.
+Os testes usam apenas Bun 1.x e estão descritos no
+**[relatório central de resultados](docs/TEST_RESULTS.md)**. Os percentuais
+são medidos e publicados em [cobertura](docs/TEST_COVERAGE.md).
 
 ```bash
-bun install
+bun install --frozen-lockfile
 bun run lint
-bun run lint:fix
 bun run typecheck
 bun run format:check
-bun run test
-bun run test:e2e
-bun run test:cov
+bun run test                 # unidade
+bun run test:e2e             # PostgreSQL/MiniStack e API
+bun run test:cov:unit        # relatório LCOV unitário
+# Para cobertura integrada: usar PostgreSQL isolado recém-migrado na CI
+bun run test:cov:full
 ```
 
-Os PRs para a `master` executam **três checks independentes**: lint/formatação/TypeScript, testes/coverage/PostgreSQL e validação dos cenários k6. O deploy continua simulado. Configure os três checks como *required checks* em Settings → Rules → Rulesets para bloquear merges com CI falhando.
+A [configuração CircleCI](.circleci/config.yml) define jobs independentes
+de qualidade estática, integração financeira real e Keycloak OIDC. O
+[GitHub Actions](.github/workflows/ci.yml) continua fornecendo validação e
+artefatos de cobertura no PR. A configuração do CircleCI requer conexão do
+projeto na plataforma e marcação dos checks como obrigatórios.
 
-**Testes usam Bun Test**, compatível com a API de asserções Jest. Não adicionamos um segundo test runner porque Bun 1.x é obrigatório no desafio.
+## Performance com k6 (fora dos checks de merge)
 
-## Testes de performance (k6)
-
-Veja [docs/PERFORMANCE.md](docs/PERFORMANCE.md). Scripts k6: smoke, load, stress, spike e soak.
-Todos testam **somente a rota inicial** por enquanto, ainda sem transações financeiras:
+O [manual do k6](docs/PERFORMANCE.md) descreve o ambiente com Keycloak,
+a API financeira real, cenários smoke/load/stress/spike/soak/hot-wallet,
+validação de todas as rotas e relatórios de p50/p95/p99, RPS e divergências.
+Consulte o [relatório específico de performance](docs/PERFORMANCE_REPORT.md).
 
 ```bash
-# Com os containers configurados e o Bun instalado:
-bun run test:load                # alias do smoke
+docker compose --profile full up --build -d
+docker compose exec -T api bun run db:migrate:up
 bun run test:load:smoke
-bun run test:load:load
-bun run test:load:stress
-bun run test:load:spike
-bun run test:load:soak
+bun run test:load:hot-wallet
 ```
 
-No `.env`, configure `K6_VUS` e `K6_DURATION`. O cenário reporta latências (incluindo p50/p95/p99), erros HTTP e checks. **Concorrência financeira entre três processos já é testada diretamente contra PostgreSQL; carga HTTP via k6 será configurada em etapa posterior.**
+**k6 é separado e opcional para merge.** Para executá-lo no CircleCI, use
+o parâmetro manual `run_performance=true`; nenhuma aprovação do PR
+depende da carga ou dos limiares experimentais de performance.
 
 ## AWS / EKS / Terraform
 

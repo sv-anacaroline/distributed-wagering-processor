@@ -168,4 +168,50 @@ describe('PostgreSQL financial invariants (actual database)', () => {
       )
     `);
   });
+  it('prevents deleting financial decisions, inbox identities and unpublished outbox events', async () => {
+    const walletId = randomUUID();
+    const playerId = randomUUID();
+    const txId = randomUUID();
+    const eventId = randomUUID();
+    const consumerId = 'durable-' + randomUUID();
+    await sql(`insert into wallets(id,player_id,currency,balance,version,created_at,updated_at)
+      values ('${walletId}','${playerId}','BRL',0.00,1,now(),now())`);
+    await sql(`insert into wager_transactions(
+        id,provider_id,external_transaction_id,idempotency_key,payload_hash,
+        wallet_id,player_id,round_id,game_id,kind,amount,currency,status,created_at,processed_at
+      ) values (
+        '${txId}','provider-a','${txId}','${txId}','unique-hash',
+        '${walletId}','${playerId}','round','game','LOSS',1.00,'BRL',
+        'PROCESSED',now(),now()
+      )`);
+    const envelope = JSON.stringify({
+      eventId,
+      eventType: 'WagerTransactionProcessed',
+      aggregateId: walletId,
+      correlationId: txId,
+      occurredAt: new Date().toISOString(),
+      version: 1,
+      data: { transactionId: txId, walletId },
+    });
+    await sql(`insert into outbox_messages(id,aggregate_id,event_type,payload,occurred_at)
+      values ('${eventId}','${walletId}','WagerTransactionProcessed',
+        '${envelope}'::jsonb,now())`);
+    await sql(`insert into inbox_messages(consumer_name,message_id,payload_hash,received_at,processed_at)
+      values ('${consumerId}','${txId}','hash',now(),now())`);
+
+    // LOSS is terminal but has no ledger FK: only the audit trigger can block deletion.
+    await expectSqlFailure(`delete from wager_transactions where id='${txId}'`);
+    await expectSqlFailure(`delete from inbox_messages where consumer_name='${consumerId}'`);
+    await expectSqlFailure(`delete from outbox_messages where id='${eventId}'`);
+    await expectSqlFailure('truncate inbox_messages');
+    await expectSqlFailure('truncate outbox_messages');
+    const [record] = await orm.em.execute<Array<{ events: number; tx: number; inbox: number }>>(
+      `select
+       (select count(*)::integer from outbox_messages where id=?::uuid) as events,
+       (select count(*)::integer from wager_transactions where id=?::uuid) as tx,
+       (select count(*)::integer from inbox_messages where consumer_name=?) as inbox`,
+      [eventId, txId, consumerId],
+    );
+    expect(record).toEqual({ events: 1, tx: 1, inbox: 1 });
+  });
 });

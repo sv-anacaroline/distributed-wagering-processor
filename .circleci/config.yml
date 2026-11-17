@@ -1,0 +1,216 @@
+version: 2.1
+
+# GitHub PR checks must not depend on k6. Enable the optional performance
+# workflow manually via CircleCI pipeline parameter run_performance=true.
+parameters:
+  run_performance:
+    type: boolean
+    default: false
+
+executors:
+  integration-machine:
+    machine:
+      image: ubuntu-2404:current
+    resource_class: medium
+
+commands:
+  install-bun:
+    steps:
+      - run:
+          name: Install the challenge-pinned Bun runtime
+          command: |
+            curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.4"
+            echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$BASH_ENV"
+            "$HOME/.bun/bin/bun" --version
+      - run:
+          name: Install exact locked dependencies
+          command: bun install --frozen-lockfile
+  start-financial-dependencies:
+    steps:
+      - run:
+          name: Start real PostgreSQL and MiniStack
+          command: docker compose up -d postgres aws-emulator
+      - run:
+          name: Provision actual FIFO, DLQ and events queues
+          command: docker compose run --rm terraform-local
+
+jobs:
+  quality-static:
+    executor: integration-machine
+    steps:
+      - checkout
+      - install-bun
+      - run:
+          name: ESLint
+          command: bun run lint
+      - run:
+          name: Format check
+          command: bun run format:check
+      - run:
+          name: Strict TypeScript
+          command: bun run typecheck
+
+  quality-financial:
+    executor: integration-machine
+    environment:
+      NODE_ENV: test
+      HTTP_AUTH_MODE: disabled
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: wagering
+      DB_USER: wagering
+      DB_PASSWORD: local_dev_only
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      SQS_ENDPOINT_URL: http://127.0.0.1:4566
+      EVENTS_E2E: "1"
+    steps:
+      - checkout
+      - install-bun
+      - start-financial-dependencies
+      - run:
+          name: Apply reversible schema migrations
+          command: bun run db:migrate:up
+      - run:
+          name: Unit cases, deterministic domain and events
+          command: |
+            mkdir -p artifacts/test-results
+            bun test --reporter=junit --reporter-outfile=artifacts/test-results/unit.xml ./src
+      - run:
+          name: PostgreSQL + MiniStack, HTTP E2E, actual parallel processes and failures
+          command: |
+            bun test --reporter=junit --reporter-outfile=artifacts/test-results/integration.xml ./test
+      - run:
+          name: Separate unit-only coverage report
+          command: |
+            bun run test:cov:unit
+            mkdir -p artifacts/coverage/unit
+            cp coverage/lcov.info artifacts/coverage/unit/lcov.info
+            bun scripts/coverage-report.ts unit artifacts/coverage/unit/lcov.info artifacts/coverage/unit/report.md
+      - run:
+          name: Build a fresh isolated PostgreSQL schema for combined coverage
+          command: |
+            bun scripts/prepare-coverage-db.ts
+            DB_NAME=wagering_coverage bun run db:migrate:up
+      - run:
+          name: Combined unit and real integration coverage (mandatory gate)
+          command: |
+            DB_NAME=wagering_coverage bun run test:cov:full
+            mkdir -p artifacts/coverage/integrated
+            cp coverage/lcov.info artifacts/coverage/integrated/lcov.info
+            bun scripts/coverage-report.ts integrated artifacts/coverage/integrated/lcov.info artifacts/coverage/integrated/report.md --enforce
+      - run:
+          name: Verify Nest build and ORM migrations
+          command: |
+            bun run build
+            bun run db:debug
+            bun run db:migrate:pending
+            bun run db:migrate:down
+            bun run db:migrate:up
+      - store_test_results:
+          path: artifacts/test-results
+      - store_artifacts:
+          path: artifacts
+          destination: financial-quality
+      - run:
+          name: Inspect database or emulator if failed
+          when: on_fail
+          command: docker compose logs --tail=150 postgres aws-emulator || true
+      - run:
+          name: Shut down disposable services
+          when: always
+          command: docker compose down --remove-orphans
+
+  quality-auth:
+    executor: integration-machine
+    environment:
+      NODE_ENV: test
+      HTTP_AUTH_MODE: oidc
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: wagering
+      DB_USER: wagering
+      DB_PASSWORD: local_dev_only
+      OIDC_ISSUER: http://localhost:8080/realms/wagering
+      OIDC_JWKS_URL: http://localhost:8080/realms/wagering/protocol/openid-connect/certs
+      OIDC_AUDIENCE: wagering-api
+      OIDC_PROVIDER_CLIENT_IDS: provider-a,provider-b
+      OIDC_METRICS_CLIENT_ID: wagering-monitor
+      KEYCLOAK_BASE_URL: http://localhost:8080
+      AUTH_E2E: "1"
+    steps:
+      - checkout
+      - install-bun
+      - run:
+          name: Start PostgreSQL and genuine Keycloak IdP
+          command: docker compose --profile auth up -d postgres keycloak
+      - run:
+          name: Wait for OIDC realm discovery
+          command: |
+            for attempt in $(seq 1 90); do
+              if curl -fsS http://localhost:8080/realms/wagering/.well-known/openid-configuration > /dev/null; then
+                exit 0
+              fi
+              sleep 2
+            done
+            docker compose --profile auth logs keycloak
+            exit 1
+      - run:
+          name: Migrate real authorization grants
+          command: bun run db:migrate:up
+      - run:
+          name: E2E provider isolation using real signed Keycloak tokens
+          command: |
+            mkdir -p artifacts/test-results
+            bun test --reporter=junit --reporter-outfile=artifacts/test-results/keycloak.xml ./test/auth-keycloak.e2e.test.ts
+      - store_test_results:
+          path: artifacts/test-results
+      - store_artifacts:
+          path: artifacts
+          destination: auth-e2e
+      - run:
+          name: Shut down test IdP
+          when: always
+          command: docker compose --profile auth down --remove-orphans
+
+  performance-manual:
+    executor: integration-machine
+    environment:
+      K6_AUTH_MODE: oidc
+      K6_OIDC_CLIENT_ID: provider-a
+      K6_OIDC_CLIENT_SECRET: local-provider-a-change-me
+    steps:
+      - checkout
+      - run:
+          name: Start full live service and apply database migrations
+          command: |
+            docker compose --profile full up -d --build postgres aws-emulator terraform-local keycloak
+            docker compose --profile full run --rm --no-deps api bun run db:migrate:up
+            docker compose --profile full up -d --build api wager-sqs-consumer wager-outbox-publisher reference-retry-worker
+            for attempt in $(seq 1 90); do
+              if curl -fsS http://localhost:8080/realms/wagering/.well-known/openid-configuration > /dev/null; then break; fi
+              sleep 2
+            done
+            mkdir -p performance/results
+      - run:
+          name: Run all six financial k6 scenarios outside merge checks
+          command: bash scripts/run-performance.sh
+      - store_artifacts:
+          path: performance/results
+          destination: performance-results
+      - run:
+          name: Tear down performance environment
+          when: always
+          command: docker compose --profile full down --remove-orphans
+
+workflows:
+  mandatory-code-quality:
+    jobs:
+      - quality-static
+      - quality-financial
+      - quality-auth
+  optional-financial-performance:
+    when: << pipeline.parameters.run_performance >>
+    jobs:
+      - performance-manual

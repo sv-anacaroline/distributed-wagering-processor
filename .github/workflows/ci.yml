@@ -93,8 +93,29 @@ jobs:
         run: bun run test
       - name: E2E tests with PostgreSQL
         run: bun run test:e2e
-      - name: Coverage threshold
-        run: bun run test:cov
+      - name: Unit-only coverage report
+        run: |
+          bun run test:cov:unit
+          mkdir -p artifacts/coverage/unit
+          cp coverage/lcov.info artifacts/coverage/unit/lcov.info
+          bun scripts/coverage-report.ts unit artifacts/coverage/unit/lcov.info artifacts/coverage/unit/report.md
+      - name: Fresh isolated PostgreSQL for deterministic combined coverage
+        run: |
+          bun scripts/prepare-coverage-db.ts
+          DB_NAME=wagering_coverage bun run db:migrate:up
+      - name: Combined unit, E2E and integration coverage
+        run: |
+          DB_NAME=wagering_coverage bun run test:cov:full
+          mkdir -p artifacts/coverage/integrated
+          cp coverage/lcov.info artifacts/coverage/integrated/lcov.info
+          bun scripts/coverage-report.ts integrated artifacts/coverage/integrated/lcov.info artifacts/coverage/integrated/report.md --enforce
+      - name: Publish coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-test-coverage
+          path: artifacts/coverage
+          if-no-files-found: warn
       - name: Build NestJS
         run: bun run build
       - name: Validate MikroORM PostgreSQL connectivity
@@ -169,28 +190,10 @@ jobs:
         if: always()
         run: docker compose --profile auth down --remove-orphans
 
-  k6-config:
-    name: Validate k6 scenario configuration
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Validate Docker Compose configuration
-        run: docker compose -f docker-compose.yml -f docker-compose.k6.yml config --quiet
-      - name: Inspect all k6 scenarios without generating traffic
-        run: |
-          for scenario in smoke load stress spike soak; do
-            docker run --rm \
-              -v "$PWD/performance:/scripts:ro" \
-              -e "K6_SCENARIO=$scenario" \
-              grafana/k6:1.8.2 inspect "/scripts/scenarios/$scenario.js" > /dev/null
-          done
-
   deploy-preview:
     name: Simulate AWS deployment (no changes)
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    needs: [lint-and-types, quality, k6-config]
+    needs: [lint-and-types, quality]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -15,6 +15,14 @@ services:
       K6_P95_MS: ${K6_P95_MS:-}
       K6_ENVIRONMENT: ${K6_ENVIRONMENT:-local}
       K6_SCENARIO: ${K6_SCENARIO:-smoke}
+      K6_AUTH_MODE: ${K6_AUTH_MODE:-oidc}
+      K6_OIDC_TOKEN_URL: ${K6_OIDC_TOKEN_URL:-http://keycloak:8080/realms/wagering/protocol/openid-connect/token}
+      K6_OIDC_CLIENT_ID: ${K6_OIDC_CLIENT_ID:-provider-a}
+      K6_OIDC_CLIENT_SECRET: ${K6_OIDC_CLIENT_SECRET:-local-provider-a-change-me}
+      K6_AUTH_TOKEN: ${K6_AUTH_TOKEN:-}
+      K6_OIDC_MONITOR_CLIENT_ID: ${K6_OIDC_MONITOR_CLIENT_ID:-wagering-monitor}
+      K6_OIDC_MONITOR_CLIENT_SECRET: ${K6_OIDC_MONITOR_CLIENT_SECRET:-local-monitor-change-me}
+      K6_MONITOR_AUTH_TOKEN: ${K6_MONITOR_AUTH_TOKEN:-}
     entrypoint: ["k6"]
     command: ["run", "/scripts/scenarios/smoke.js"]
     depends_on:

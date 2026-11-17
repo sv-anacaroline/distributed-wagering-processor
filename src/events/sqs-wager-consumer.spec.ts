@@ -8,6 +8,7 @@ import {
 } from '@aws-sdk/client-sqs';
 import { InvalidSqsMessageError } from './wager-request.js';
 import { TransientProcessingError } from '../application/process-wager.js';
+import { ProviderWalletMismatchError } from '../domain/errors.js';
 import {
   SqsWagerConsumer,
   isPermanentWagerError,
@@ -250,5 +251,51 @@ describe('SQS wager worker delivery policy', () => {
     ).toBe(false);
     expect(receiveCount(message(payload(), '-5'))).toBe(1);
     expect(retryVisibilitySeconds(5)).toBe(16);
+  });
+  it('DLQs a provider-wallet authorization failure before touching the ledger again', async () => {
+    const { worker, sent } = setup(() => Promise.reject(new ProviderWalletMismatchError()));
+    expect(await worker.processOne(message())).toBe('dlq');
+    expect(sent[0]).toBeInstanceOf(SendMessageCommand);
+    expect(sent[1]).toBeInstanceOf(DeleteMessageCommand);
+    const dlq = sent[0] as SendMessageCommand;
+    expect(dlq.input.MessageAttributes?.failureKind?.StringValue).toBe('PERMANENT');
+  });
+
+  it('refuses a message with no SQS receipt handle instead of ACKing it', async () => {
+    const { worker, sent } = setup(() => Promise.resolve({}));
+    let error: unknown;
+    try {
+      await worker.processOne({ Body: payload() });
+    } catch (caught: unknown) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('stops polling after graceful shutdown without receiving a second batch', async () => {
+    const { worker } = setup(() => Promise.resolve());
+    const controller = new AbortController();
+    let cycles = 0;
+    worker.runOnce = () => {
+      cycles++;
+      controller.abort();
+      return Promise.resolve([]);
+    };
+    await worker.run(controller.signal);
+    expect(cycles).toBe(1);
+  });
+
+  it('does not start another polling iteration after a fatal receive interruption during shutdown', async () => {
+    const { worker } = setup(() => Promise.resolve());
+    const controller = new AbortController();
+    let cycles = 0;
+    worker.runOnce = () => {
+      cycles++;
+      controller.abort();
+      return Promise.reject(new Error('ReceiveMessage interrupted by SIGTERM'));
+    };
+    await worker.run(controller.signal);
+    expect(cycles).toBe(1);
   });
 });

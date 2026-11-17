@@ -71,4 +71,19 @@ describe('ReferenceRetryWorker', () => {
     }
     expect(error).toBeInstanceOf(InvalidDomainStateError);
   });
+
+  it('does not leave a failed reference poll running after shutdown', async () => {
+    const controller = new AbortController();
+    let polls = 0;
+    const worker = new ReferenceRetryWorker({
+      dueReferences: () => {
+        polls++;
+        controller.abort();
+        return Promise.reject(new Error('PostgreSQL temporarily down'));
+      },
+      retryPending: () => Promise.resolve(null),
+    });
+    await worker.run(controller.signal, 100);
+    expect(polls).toBe(1);
+  });
 });
