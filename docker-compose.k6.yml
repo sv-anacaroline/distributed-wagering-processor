@@ -20,6 +20,9 @@ services:
       K6_OIDC_CLIENT_ID: ${K6_OIDC_CLIENT_ID:-provider-a}
       K6_OIDC_CLIENT_SECRET: ${K6_OIDC_CLIENT_SECRET:-local-provider-a-change-me}
       K6_AUTH_TOKEN: ${K6_AUTH_TOKEN:-}
+      K6_OIDC_MONITOR_CLIENT_ID: ${K6_OIDC_MONITOR_CLIENT_ID:-wagering-monitor}
+      K6_OIDC_MONITOR_CLIENT_SECRET: ${K6_OIDC_MONITOR_CLIENT_SECRET:-local-monitor-change-me}
+      K6_MONITOR_AUTH_TOKEN: ${K6_MONITOR_AUTH_TOKEN:-}
     entrypoint: ["k6"]
     command: ["run", "/scripts/scenarios/smoke.js"]
     depends_on:

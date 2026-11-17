@@ -13,6 +13,8 @@ const betLatency = new Trend('financial_bet_batch_ms', true);
 const expectedBetStatuses = http.expectedStatuses(200, 422);
 let cachedToken = '';
 let expiresAt = 0;
+let cachedMonitorToken = '';
+let monitorExpiresAt = 0;
 
 /** IDs are test-only correlation keys; financial amounts never use JS numbers. */
 export function newId() {
@@ -51,6 +53,37 @@ export function authHeaders() {
   return { Authorization: `Bearer ${cachedToken}` };
 }
 
+function monitorHeaders() {
+  if ((__ENV.K6_AUTH_MODE || 'oidc') === 'disabled') return {};
+  if (__ENV.K6_MONITOR_AUTH_TOKEN) {
+    return { Authorization: `Bearer ${__ENV.K6_MONITOR_AUTH_TOKEN}` };
+  }
+  if (cachedMonitorToken && Date.now() < monitorExpiresAt) {
+    return { Authorization: `Bearer ${cachedMonitorToken}` };
+  }
+  const clientId = __ENV.K6_OIDC_MONITOR_CLIENT_ID || 'wagering-monitor';
+  const secret = __ENV.K6_OIDC_MONITOR_CLIENT_SECRET;
+  if (!__ENV.K6_OIDC_TOKEN_URL || !secret) {
+    fail('Metrics route needs an independent monitoring OIDC client');
+  }
+  const response = http.post(
+    __ENV.K6_OIDC_TOKEN_URL,
+    {
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: secret,
+    },
+    { tags: { endpoint: 'oidc-monitor-token' }, timeout: '10s' },
+  );
+  if (response.status !== 200) fail(`Monitor token request failed: HTTP ${response.status}`);
+  const token = response.json('access_token');
+  if (typeof token !== 'string' || !token) fail('Monitoring access_token missing');
+  cachedMonitorToken = token;
+  const expires = Number(response.json('expires_in') || 60);
+  monitorExpiresAt = Date.now() + Math.max(5, expires - 20) * 1000;
+  return { Authorization: `Bearer ${cachedMonitorToken}` };
+}
+
 function params(endpoint, statuses = null) {
   return {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -61,6 +94,7 @@ function params(endpoint, statuses = null) {
 }
 
 function json(response) {
+  if (!response) return null;
   try {
     return response.json();
   } catch {
@@ -173,6 +207,37 @@ export function financialIteration() {
     '{}',
     params('reconciliation'),
   );
+  // Exercise every HTTP route, including operational and both read models.
+  // Individual endpoint tags give separate p50/p95/p99 distributions in k6.
+  const root = http.get(`${baseUrl}/`, params('root'));
+  const live = http.get(`${baseUrl}/health/live`, params('health-live'));
+  const ready = http.get(`${baseUrl}/health/ready`, params('health-ready'));
+  const byId = oneWinner
+    ? http.get(
+        `${baseUrl}/wagering/transactions/${win.transactionId}`,
+        params('wager-by-id'),
+      )
+    : null;
+  const byExternal = oneWinner
+    ? http.get(
+        `${baseUrl}/providers/${winningCommand.providerId}/wagering/transactions/${winningCommand.externalTransactionId}`,
+        params('wager-by-provider-external-id'),
+      )
+    : null;
+  const metrics = http.get(`${baseUrl}/internal/metrics`, {
+    ...params('internal-metrics'),
+    headers: { ...monitorHeaders() },
+  });
+  const allRoutes =
+    root.status === 200 &&
+    live.status === 200 &&
+    ready.status === 200 &&
+    byId?.status === 200 &&
+    json(byId)?.id === win?.transactionId &&
+    byExternal?.status === 200 &&
+    json(byExternal)?.id === win?.transactionId &&
+    metrics.status === 200 &&
+    String(metrics.body).includes('wallet_reconciliation_divergences_total');
   const walletView = json(balance);
   const ledgerView = json(ledger);
   const reconciled = json(recon);
@@ -188,7 +253,7 @@ export function financialIteration() {
     recon.status === 200 &&
     reconciled?.consistent === true &&
     reconciled?.calculatedBalance?.amount === '20.00';
-  const correct = oneWinner && historicalReplay && exact;
+  const correct = oneWinner && historicalReplay && exact && allRoutes;
   correctness.add(correct);
   if (!correct) violations.add(1);
   check(

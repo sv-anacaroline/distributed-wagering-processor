@@ -29,6 +29,14 @@ export function handleSummary(data) {
     replays: values('financial_idempotent_replays').count || 0,
     invariant_violations: violations.count || 0,
     correctness_rate: correctness.rate || 0,
+    endpoints: Object.fromEntries(
+      Object.entries(data.metrics)
+        .filter(([name]) => name.startsWith('http_req_duration{endpoint:'))
+        .map(([name, metric]) => [name, metric.values]),
+    ),
+    // These metrics require application instrumentation, not k6 assumptions.
+    lock_conflicts: data.metrics.financial_lock_conflicts?.values?.count ?? null,
+    outbox_lag_ms: data.metrics.financial_outbox_lag_ms?.values ?? null,
     metrics: data.metrics,
   };
   return {
