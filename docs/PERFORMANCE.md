@@ -1,58 +1,69 @@
-# Testes de performance — k6
+# Teste de performance com k6 — fluxo financeiro real
 
-## Objetivo
+[Resultados e status das medições](PERFORMANCE_REPORT.md) ·
+[relatório central de testes](TEST_RESULTS.md).
 
-Estabelecer testes reproduzíveis de latência HTTP antes do domínio financeiro.
-**Não é um benchmark de corretude de dinheiro**: após implementar wallet/ledger, criar cenários dedicados para BET duplicado, duas BET concorrentes, múltiplas instâncias, falhas e reconciliação.
+## Preparação
 
-## Pré-requisitos e execução
-
-Iniciar a API pelo Compose (`docker compose up --build -d`). O k6 é executado em um container e não exige instalação local.
+Os cenários executam **rotas financeiras**, não apenas `GET /`. Suba o
+ambiente local com Keycloak, PostgreSQL, MiniStack, API e workers, e aplique
+as migrations antes de executar carga.
 
 ```bash
-bun run test:load:smoke
+cp .env.example .env
+docker compose --profile full up --build -d
+docker compose exec -T api bun run db:migrate:up
+```
+
+O k6 usa dois clients OIDC do realm importado: `provider-a` para as
+operações financeiras e `wagering-monitor` para `/internal/metrics`.
+Os segredos do Compose são exclusivamente de **desenvolvimento**.
+No host não é necessário instalar o k6: executamos
+`grafana/k6:1.8.2` em container.
+
+## Execução manual, separada do merge
+
+```bash
+bun run test:load                # smoke
 bun run test:load:load
 bun run test:load:stress
 bun run test:load:spike
 bun run test:load:soak
+bun run test:load:hot-wallet     # mesma wallet para VUs concorrentes
 ```
 
-O alias `bun run test:load` executa smoke. Os comandos usam `id -u`/`id -g`
-para executar o k6 com o mesmo usuário do host e preservar permissões de escrita
-em `performance/results/`. Os comandos pressupõem shell POSIX (Linux/macOS). Pode configurar no `.env`:
-- `K6_VUS`: VUs-base (5).
-- `K6_DURATION`: duração de smoke (15s).
-- `K6_STAGE_DURATION`: duração padrão de estágio (30s).
-- `K6_SOAK_DURATION`: soak (10m).
-- `K6_BASE_URL`: URL acessível **dentro** do container k6 (default `http://api:3000`).
-- `K6_P95_MS`: override opcional para threshold p95.
-- `K6_ENVIRONMENT`: etiqueta do ambiente (local).
+Os perfis são `smoke` (curto), `load` (rampa nominal),
+`stress` (carga crescente), `spike` (pico brusco), `soak`
+(sustentado) e `hot-wallet` (disputa pelo mesmo saldo).
+A configuração é ajustável por `K6_VUS`, `K6_DURATION`,
+`K6_STAGE_DURATION`, `K6_SOAK_DURATION`, `K6_P95_MS`,
+`K6_ENVIRONMENT` e `K6_BASE_URL`.
 
-## Cenários
+Para serviço externo, configure `K6_OIDC_TOKEN_URL`,
+`K6_OIDC_CLIENT_ID`, `K6_OIDC_CLIENT_SECRET`,
+`K6_OIDC_MONITOR_CLIENT_ID` e `K6_OIDC_MONITOR_CLIENT_SECRET`
+ou um token explícito apropriado. Não versione segredos. O modo
+`K6_AUTH_MODE=disabled` é **somente para desenvolvimento local**.
 
-| Script | Modelo | Finalidade |
-| --- | --- | --- |
-| `scenarios/smoke.js` | constant-vus curto | Verificar comportamento básico |
-| `scenarios/load.js` | ramping-vus | Carga nominal |
-| `scenarios/stress.js` | ramping-vus crescente | Explorar saturação |
-| `scenarios/spike.js` | ramping-vus abrupto | Tráfego repentino |
-| `scenarios/soak.js` | constant-vus prolongado | Estabilidade temporal |
+## Evidência por rota
 
-Configuração compartilhada em `config/`, request/check em `utils/http.js`, resultados em `utils/report.js`.
+Além de tempos HTTP p50/p95/p99, cada iteração valida a corrida de
+BET, débito único, rejeição financeira correta, replay, ledger e
+reconciliação. As tags `endpoint` permitem inspecionar latência
+separada de cada rota; para a lista completa de rotas veja
+[o relatório de performance](PERFORMANCE_REPORT.md).
 
-## Resultados e thresholds
+Cada cenário escreve um JSON em `performance/results/<cenario>-summary.json`,
+ignorado pelo Git; o CircleCI pode publicar esses arquivos como artefatos.
 
-Os cenários possuem checks de status HTTP 200 e body `Hello World!`.
-Thresholds iniciais: `http_req_failed < 1%`, `checks > 99%` e p95 dependente do cenário. São *valores de alerta iniciais*, não critérios financeiros do enunciado.
+## CircleCI opcional
 
-Ao final, o k6 escreve `performance/results/<cenario>-summary.json` com RPS, quantidade de requests, erros e p50/p95/p99. Esse diretório é ignorado pelo Git.
+A configuração em [`.circleci/config.yml`](../.circleci/config.yml)
+contém o workflow `optional-financial-performance`, acionado
+**somente** quando o parâmetro da pipeline `run_performance=true`.
+O workflow obrigatório de testes **não depende do k6**, que jamais deve
+ser requerido para aceitar o merge.
 
-### Metodologia antes de comparar resultados
-
-Documentar: commit, versão do k6, perfil Docker/EKS, CPU/RAM, quantidade de réplicas, conectividade, tamanho da base, VUs, estágio, warmup, taxas de erro, métricas de lock e atraso da outbox. O desafio **não exige meta de RPS**.
-
-Os testes financeiros posteriores terão de conferir no PostgreSQL `wallet.balance == ledger reconstituído`, além das métricas HTTP.
-
-## Validação automática no PR
-
-O GitHub Actions executa `k6 inspect` em smoke/load/stress/spike/soak e valida o Compose sem gerar tráfego. Para medir desempenho real, subir a aplicação, executar `bun run test:load:<scenario>` e inspecionar `performance/results/`.
+O `K6_P95_MS` é um limiar experimental do cenário, não o SLA
+fixado pelo enunciado. Não inferir RPS ou latências sem executar os
+scripts em ambiente identificado.
