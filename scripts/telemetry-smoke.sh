@@ -57,8 +57,30 @@ while time.time() < deadline:
     except Exception:
         verified['traces'] = False
     if all(verified.values()):
-        print('TELEMETRY_SMOKE_PASSED', json.dumps(verified, sort_keys=True))
-        break
+        # Assert the same W3C trace crossed two independent processes,
+        # not merely that Tempo and Loki each received unrelated data.
+        def ids_for(message):
+            params = {'query': '{service_name=~"wager-.*"} |= "' + message + '"',
+                      'start': str(now - 300_000_000_000),
+                      'end': str(now), 'limit': 1000}
+            raw = get(loki + '/loki/api/v1/query_range?' + urllib.parse.urlencode(params))
+            found = set()
+            for stream in raw.get('data', {}).get('result', []):
+                for _, line in stream.get('values', []):
+                    try:
+                        event = json.loads(line)
+                        if 'trace_id' in event:
+                            found.add(event['trace_id'])
+                    except (ValueError, TypeError):
+                        pass
+            return found
+        verified['cross_worker_trace'] = bool(
+            ids_for('wager.transaction.committed') &
+            ids_for('outbox.publish.completed')
+        )
+        if verified['cross_worker_trace']:
+            print('TELEMETRY_SMOKE_PASSED', json.dumps(verified, sort_keys=True))
+            break
     time.sleep(3)
 else:
     raise SystemExit('TELEMETRY_SMOKE_FAILED ' + json.dumps(verified, sort_keys=True))

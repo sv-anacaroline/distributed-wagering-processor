@@ -5,6 +5,14 @@ on:
   push:
     branches:
       - feature/telemetry
+    paths:
+      - .github/workflows/telemetry-smoke.yml
+      - docker-compose.yml
+      - infra/observability/**
+      - src/telemetry/**
+      - src/events/**
+      - scripts/local-events.ts
+      - scripts/telemetry-smoke.sh
 
 permissions:
   contents: read

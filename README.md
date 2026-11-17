@@ -237,7 +237,7 @@ métricas por rota, saúde PostgreSQL/SQS, Inbox, Outbox, retry e traces.
 O dashboard permite abrir cada linha, inspecionar o contexto da falha e
 navegar pelo `trace_id` até o Tempo.
 
-- [Manual completo de observabilidade](docs/OBSERVABILITY.md)
+- [Manual completo de observabilidade](docs/OBSERVABILITY.md) — com prova de execução da stack Grafana/Loki/Tempo/Prometheus
 - [Dashboard local](http://localhost:3001/d/wagering-observability)
 - [Relatório central de testes](docs/TEST_RESULTS.md)
 - [Benchmark k6 com resultados reais](docs/PERFORMANCE_REPORT.md)

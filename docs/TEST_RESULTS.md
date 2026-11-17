@@ -74,3 +74,12 @@ health checks PostgreSQL/SQS. A integração de traces/logs está em
 `src/telemetry` e `infra/observability`. A validação específica do
 ambiente de observabilidade é descrita no manual e não interfere nos
 resultados financeiros LCOV.
+
+### Prova de observabilidade real
+
+Em [17/11/2026, workflow de observabilidade #44009078738](https://github.com/sv-anacaroline/distributed-wagering-processor/actions/runs/44009078738),
+o Compose completo passou: 16 painéis Grafana provisionados, logs em
+Loki, traces em Tempo e métricas em Prometheus. O mesmo cenário
+verificou 17 eventos de Outbox publicados, saldo reconciliado, ledger
+imutável e todos os tipos de eventos financeiros. Consultar
+[o relatório de observabilidade](OBSERVABILITY.md).

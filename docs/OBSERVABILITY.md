@@ -147,6 +147,27 @@ consulta PostgreSQL e SQS assinando a solicitação com credenciais AWS.
 - A migração `Migration20261117050000` adiciona o campo `traceparent`
   sem modificar registros existentes e possui `down` reversível.
 
+## Evidência da validação integrada
+
+A stack foi iniciada de ponta a ponta em um runner Linux descartável
+em **17/11/2026** e validada na
+[execução #44009078738 do GitHub Actions](https://github.com/sv-anacaroline/distributed-wagering-processor/actions/runs/44009078738)
+(commit `71e4a9e`, antes dos testes adicionais de privacidade).
+
+- `LOCAL READY`: API, Keycloak e Grafana responderam.
+- `TELEMETRY_DASHBOARD wagering-observability 16`: 16 painéis carregados do provisionamento.
+- `TELEMETRY_SMOKE_PASSED {"logs":true,"metrics":true,"traces":true}`:
+  registros OTLP realmente consultados em Loki, Prometheus e Tempo.
+- Exercício financeiro real: 6 tipos (incluindo OPENING interno), referência
+  fora de ordem, rejeição, **17 eventos da Outbox publicados**, 7 lançamentos
+  de ledger, saldo BRL 85.00, versão 7 e reconciliação correta.
+
+A execução confirma a ingestão entre processos, não apenas a existência
+dos arquivos YAML. O script `scripts/telemetry-smoke.sh` também está
+preparado para verificar o relacionamento entre trace IDs do consumidor
+SQS e do publisher da Outbox nas próximas execuções. Validação local da
+máquina do usuário depende de executar `bun run local:up`.
+
 ## Validação
 
 Verifique readiness, o dashboard e as séries após gerar tráfego:
