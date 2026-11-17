@@ -25,7 +25,7 @@ x-app-env: &app-env
 
 services:
   keycloak:
-    profiles: [auth]
+    profiles: [auth, full]
     image: quay.io/keycloak/keycloak:26.8.2
     command: ["start-dev", "--import-realm", "--hostname=http://localhost:${KEYCLOAK_PORT:-8080}"]
     environment:
@@ -78,7 +78,7 @@ services:
 
   # Optional scheduled DB worker; no SQS, API or outbox publisher involved.
   reference-retry-worker:
-    profiles: [reference-worker]
+    profiles: [reference-worker, full]
     build:
       context: .
       target: development
@@ -95,7 +95,7 @@ services:
 
   # Section 10: SQS FIFO consumer (Inbox+financial SQL commit before ACK).
   wager-sqs-consumer:
-    profiles: [sqs-workers]
+    profiles: [sqs-workers, full]
     build:
       context: .
       target: development
@@ -114,7 +114,7 @@ services:
 
   # Section 11: outbox publisher; can be scaled horizontally.
   wager-outbox-publisher:
-    profiles: [sqs-workers]
+    profiles: [sqs-workers, full]
     build:
       context: .
       target: development
@@ -149,9 +149,9 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # LocalStack: requires an auth token. MiniStack is a token-free alternative.
+  # MiniStack works without credentials; LocalStack remains selectable with its auth token.
   aws-emulator:
-    image: ${AWS_EMULATOR_IMAGE:-localstack/localstack:latest}
+    image: ${AWS_EMULATOR_IMAGE:-ministackorg/ministack:1.5.40}
     environment:
       LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
       SERVICES: sqs
@@ -159,7 +159,20 @@ services:
     ports:
       - "127.0.0.1:${SQS_PORT:-4566}:4566"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4566/_localstack/health', timeout=3)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request
+          import sys
+          for endpoint in ('_localstack/health', '_ministack/health'):
+              try:
+                  urllib.request.urlopen('http://127.0.0.1:4566/' + endpoint, timeout=3)
+                  sys.exit(0)
+              except Exception:
+                  pass
+          sys.exit(1)
       interval: 5s
       timeout: 5s
       retries: 20

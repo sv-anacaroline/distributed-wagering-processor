@@ -12,6 +12,7 @@ import type { WagerCommand } from '../src/application/wager-contracts.js';
 import {
   WagerTransactionKind as Kind,
   WagerTransactionStatus as Status,
+  FailureCode,
 } from '../src/domain/wager-transaction.js';
 
 let orm: MikroORM;
@@ -157,18 +158,14 @@ describe('SQS Inbox + wager + ledger + outbox atomic commit', () => {
     expect(await count('wallet_ledger_entries', w.walletId)).toBe(0);
     expect(await count('outbox_messages', w.walletId)).toBe(1);
   });
-  it('rolls back Inbox + wager + outbox when a financial calculation overflows after inbox reservation', async () => {
+  it('audits an overflowing WIN as REJECTED with Inbox and no new ledger movement', async () => {
     const w = await wallet('999999999999999999.99');
     const metadata = receipt();
-    let failure: unknown;
-    try {
-      await processor.processFromInbox(command(w, Kind.Win), metadata);
-    } catch (error: unknown) {
-      failure = error;
-    }
-    expect(failure).toBeInstanceOf(Error);
-    expect(await inbox(metadata.messageId)).toBeUndefined();
-    expect(await count('outbox_messages', w.walletId)).toBe(0);
+    const result = await processor.processFromInbox(command(w, Kind.Win), metadata);
+    expect(result.status).toBe(Status.Rejected);
+    expect(result.failureCode).toBe(FailureCode.BalanceLimitExceeded);
+    expect((await inbox(metadata.messageId))?.processed_at).toBeTruthy();
+    expect(await count('outbox_messages', w.walletId)).toBe(1);
     expect(await count('wallet_ledger_entries', w.walletId)).toBe(1);
     const [row] = await orm.em.execute<Array<{ balance: string }>>(
       'select balance::text as balance from wallets where id=?::uuid',

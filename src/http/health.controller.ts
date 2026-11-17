@@ -1,10 +1,25 @@
-import { Inject, Controller, Get, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Inject,
+  Controller,
+  Get,
+  Injectable,
+  OnModuleDestroy,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
+import { sqsClient, sqsQueueUrl } from '../events/sqs-client.js';
 import { EntityManager as CoreEntityManager } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
 
 @Injectable()
-export class HealthService {
+export class HealthService implements OnModuleDestroy {
+  private readonly sqsClient = sqsClient();
+
   constructor(@Inject(CoreEntityManager) private readonly em: EntityManager) {}
+
+  onModuleDestroy(): void {
+    this.sqsClient.destroy();
+  }
 
   async ready(): Promise<{ status: 'ready'; postgres: 'up'; sqs: 'up' }> {
     let postgres = false;
@@ -16,18 +31,21 @@ export class HealthService {
       /* unavailable */
     }
     try {
-      const region = process.env.AWS_REGION ?? 'us-east-1';
-      const endpoint = process.env.SQS_ENDPOINT_URL ?? `https://sqs.${region}.amazonaws.com`;
-      const url = new URL(endpoint);
-      // A lightweight network/service reachability probe, not an SQS message.
-      url.searchParams.set('Action', 'ListQueues');
-      url.searchParams.set('Version', '2012-11-05');
-      const response = await fetch(url, { signal: AbortSignal.timeout(1800) });
-      // Unsigned public check: AWS may return 400/403 for credentials;
-      // only 2xx or known request-validation responses count as reachable.
-      sqs = response.ok || response.status === 400 || response.status === 403;
+      // A reachable HTTP endpoint returning 403 is NOT an operational SQS
+      // dependency. Read the actual queue with signed AWS SDK credentials;
+      // this also checks IAM permissions and missing queue configuration.
+      const queueUrl = await sqsQueueUrl(
+        this.sqsClient,
+        process.env.SQS_WAGER_TRANSACTIONS_URL,
+        process.env.SQS_WAGER_TRANSACTIONS_QUEUE_NAME ?? 'wager-transactions.fifo',
+      );
+      const result = await this.sqsClient.send(
+        new GetQueueAttributesCommand({ QueueUrl: queueUrl, AttributeNames: ['QueueArn'] }),
+        { abortSignal: AbortSignal.timeout(1800) },
+      );
+      sqs = Boolean(result.Attributes?.QueueArn);
     } catch {
-      /* unavailable */
+      /* unavailable or unauthorized */
     }
     if (!postgres || !sqs) {
       throw new ServiceUnavailableException({

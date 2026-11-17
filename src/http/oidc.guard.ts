@@ -1,4 +1,5 @@
 import { createPublicKey, verify as verifySignature, type KeyObject } from 'node:crypto';
+import { isFinancialProviderIdAllowed } from '../application/provider-identity.js';
 import {
   CanActivate,
   ExecutionContext,
@@ -83,16 +84,7 @@ export function verifyOidcJwt(
  */
 export function assertFinancialProviderIdentity(authenticatedProvider?: string): void {
   if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
-  const configured = process.env.OIDC_PROVIDER_CLIENT_IDS;
-  const ids = (configured ?? (process.env.NODE_ENV === 'production' ? '' : 'provider-a,provider-b'))
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
-  if (
-    !authenticatedProvider ||
-    authenticatedProvider === (process.env.OIDC_METRICS_CLIENT_ID ?? 'wagering-monitor') ||
-    !ids.includes(authenticatedProvider)
-  ) {
+  if (!isFinancialProviderIdAllowed(authenticatedProvider)) {
     throw new ForbiddenException('An authorized financial provider identity is required');
   }
 }

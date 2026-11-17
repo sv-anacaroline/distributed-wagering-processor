@@ -1,6 +1,7 @@
 import {
   CurrencyMismatchError,
   InsufficientFundsError,
+  InvalidMoneyError,
   InvalidReferenceError,
   InvalidTransactionStateError,
 } from '../domain/errors.js';
@@ -109,6 +110,11 @@ export function applyWagerRules(input: WagerRuleInput): WagerRuleResult {
         );
       }
       if (error instanceof CurrencyMismatchError) return reject(FailureCode.CurrencyMismatch);
+      // The command amount is valid, but crediting it would exceed NUMERIC(20,2).
+      // Preserve the wallet and record the attempted operation as a business rejection.
+      if (error instanceof InvalidMoneyError && direction === LedgerDirection.Credit) {
+        return reject(FailureCode.BalanceLimitExceeded);
+      }
       throw error;
     }
   }

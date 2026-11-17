@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { EntityManager } from '@mikro-orm/postgresql';
-import { DomainError, InvalidDomainStateError } from '../domain/errors.js';
+import {
+  DomainError,
+  InvalidDomainStateError,
+  ProviderWalletMismatchError,
+} from '../domain/errors.js';
 import { Money } from '../domain/money.js';
 import { Wallet } from '../domain/wallet.js';
 import {
@@ -17,6 +21,7 @@ import { OutboxMessage } from '../domain/outbox-message.js';
 import { InboxMessage } from '../domain/inbox-message.js';
 import type { IntegrationEvent } from '../domain/integration-event.js';
 import { applyWagerRules } from './wager-rules.js';
+import { isFinancialProviderIdAllowed } from './provider-identity.js';
 import { initialReferenceRetry, nextReferenceRetry } from './reference-retry.js';
 import { withTransactionRetry } from './transaction-retry.js';
 import {
@@ -167,6 +172,28 @@ function domainWager(row: WagerRow): WagerTransaction {
 async function rows<T>(em: EntityManager, sql: string, values: unknown[] = []): Promise<T[]> {
   return em.execute<T[]>(sql, values, 'all');
 }
+/**
+ * Both HTTP and SQS must authorize a *new* financial command while the wallet
+ * is locked. Lock the grant row until commit, so concurrent revocation cannot
+ * invalidate an earlier authorization check before money actually moves.
+ * Exact replays do not create effects and remain safe to ACK after revocation.
+ */
+async function assertWalletProvider(
+  em: EntityManager,
+  walletId: string,
+  providerId: string,
+): Promise<void> {
+  if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
+  if (!isFinancialProviderIdAllowed(providerId)) throw new ProviderWalletMismatchError();
+  const granted = await rows<{ allowed: number }>(
+    em,
+    `select 1 as allowed from wallet_provider_grants
+     where wallet_id=?::uuid and provider_id=? limit 1 for key share`,
+    [walletId, providerId],
+  );
+  if (granted.length === 0) throw new ProviderWalletMismatchError();
+}
+
 async function lockWallet(em: EntityManager, walletId: string): Promise<Wallet> {
   const [row] = await rows<WalletRow>(em, 'select * from wallets where id=? for no key update', [
     walletId,
@@ -393,7 +420,14 @@ export class ProcessWager {
         return { result, idempotentReplay };
       };
       const recorded = await findExisting(em, cmd);
+      // An already-committed logical request must be ACK-able after a grant
+      // is revoked: it has no new financial effect and Inbox dedup still
+      // verifies the exact message payload before returning its snapshot.
       if (recorded) return finish(replay(recorded, hash), true);
+      // New commands from either transport require the same grant. Verify it
+      // inside this transaction to close the HTTP pre-check/revocation race.
+      // A failed check also rolls back a newly reserved Inbox atomically.
+      await assertWalletProvider(em, wallet.id, cmd.providerId);
 
       const at = await dbNow(em, wallet);
       const tx = WagerTransaction.create({

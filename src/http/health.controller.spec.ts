@@ -7,6 +7,13 @@ describe('health checks', () => {
     const controller = new HealthController(null as never);
     expect(controller.live()).toEqual({ status: 'live' });
   });
+  it('delegates readiness and releases the AWS SDK client on shutdown', async () => {
+    const ready = { status: 'ready', postgres: 'up', sqs: 'up' } as const;
+    const controller = new HealthController({ ready: () => Promise.resolve(ready) } as never);
+    expect(await controller.ready()).toEqual(ready);
+    const service = new HealthService({ fork: () => null } as never);
+    service.onModuleDestroy();
+  });
   it('readiness fails with 503 when SQS is unreachable', async () => {
     const original = process.env.SQS_ENDPOINT_URL;
     process.env.SQS_ENDPOINT_URL = 'http://127.0.0.1:1';
