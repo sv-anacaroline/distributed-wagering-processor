@@ -586,6 +586,69 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
       await sqs.send(new DeleteMessageCommand({ QueueUrl: dlqUrl, ReceiptHandle: handle }));
   }, 60_000);
 
+  it('retries transient SQS delivery five times before DLQ, with no SQL financial effects', async () => {
+    const w = await wallet('0.00');
+    const req = envelope(wager(w));
+    const originalBody = JSON.stringify(req);
+    await send(originalBody, w.walletId);
+    const unavailable = new SqsWagerConsumer(
+      sqs, { incoming: sourceUrl, deadLetter: dlqUrl },
+      {
+        processFromInbox: () => Promise.reject(new Error('simulated PostgreSQL outage')),
+      },
+    );
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const received = await sqs.send(new ReceiveMessageCommand({
+        QueueUrl: sourceUrl, MaxNumberOfMessages: 1, WaitTimeSeconds: 1,
+        VisibilityTimeout: 60,
+        MessageSystemAttributeNames: ['ApproximateReceiveCount'],
+      }));
+      const delivery = received.Messages?.[0];
+      if (!delivery?.ReceiptHandle) throw new Error('Message disappeared before retry ' + attempt);
+      expect(delivery.Attributes?.ApproximateReceiveCount).toBe(String(attempt));
+      const outcome = await unavailable.processOne(delivery);
+      expect(outcome).toBe(attempt === 5 ? 'dlq' : 'retry');
+      if (attempt < 5) {
+        // Advance the broker's retry visibility explicitly, avoiding timing sleeps.
+        await sqs.send(new ChangeMessageVisibilityCommand({
+          QueueUrl: sourceUrl, ReceiptHandle: delivery.ReceiptHandle, VisibilityTimeout: 0,
+        }));
+      }
+    }
+    await assertSourceAcked();
+    const dead = await sqs.send(new ReceiveMessageCommand({
+      QueueUrl: dlqUrl, MaxNumberOfMessages: 1, WaitTimeSeconds: 1,
+      MessageAttributeNames: ['All'],
+    }));
+    const poison = dead.Messages?.[0];
+    expect(poison?.Body).toBe(originalBody);
+    expect(poison?.MessageAttributes?.failureKind?.StringValue).toBe('RETRIES_EXHAUSTED');
+    const handle = poison?.ReceiptHandle;
+    if (!handle) throw new Error('Exhausted retry did not reach DLQ');
+    await sqs.send(new DeleteMessageCommand({ QueueUrl: dlqUrl, ReceiptHandle: handle }));
+    const [inbox] = await orm.em.execute<Array<{ n: number }>>(
+      `select count(*)::integer as n from inbox_messages
+       where consumer_name='wager-request-consumer' and message_id=?`, [req.messageId],
+    );
+    expect(inbox?.n).toBe(0);
+    const [transaction] = await orm.em.execute<Array<{ n: number }>>(
+      `select count(*)::integer as n from wager_transactions
+       where provider_id=? and external_transaction_id=?`,
+      [req.data.providerId, req.data.externalTransactionId],
+    );
+    expect(transaction?.n).toBe(0);
+    expect(await outboxCount(w.walletId)).toBe(0);
+    expect(await n(
+      'select count(*)::integer as n from wallet_ledger_entries where wallet_id=?::uuid',
+      [w.walletId],
+    )).toBe(0);
+    const [balance] = await orm.em.execute<Array<{ balance: string; version: number }>>(
+      'select balance::text as balance,version from wallets where id=?::uuid', [w.walletId],
+    );
+    expect(balance?.balance).toBe('0.00');
+    expect(balance?.version).toBe(1);
+  }, 90_000);
+
   it('recovers a claimed but unpublished event after worker death and lease expiration', async () => {
     const w = await wallet();
     await processor.process(wager(w));
