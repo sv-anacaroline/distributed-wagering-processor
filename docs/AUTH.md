@@ -20,7 +20,13 @@ real sem competir com a correção financeira do desafio.
   a outros serviços são recusados.
 - `wagering-monitor` é o cliente confidencial destinado a
   `GET /internal/metrics`; tokens dos providers não dão acesso às
-  métricas globais.
+  métricas globais. O monitor também **não pode abrir, consultar ou
+  movimentar wallets**, mesmo quando possui JWT válido e audiência correta.
+- `OIDC_PROVIDER_CLIENT_IDS` contém a lista explícita de OAuth clients
+  autorizados a operar como provedores financeiros (padrão local:
+  `provider-a,provider-b`). O monitor é sempre excluído, mesmo se
+  incluído por engano na lista. Em produção a variável é obrigatória:
+  lista ausente significa acesso financeiro negado.
 - `POST /wallets` registra um grant no PostgreSQL para o client
   autenticado na **mesma transação SQL** da abertura da wallet.
   `wallet_provider_grants(wallet_id, provider_id)` oferece grants
@@ -71,13 +77,24 @@ visível pelo cliente) e
 `OIDC_JWKS_URL=http://keycloak:8080/realms/wagering/protocol/openid-connect/certs`
 (acessível pela rede Docker). O Compose já configura esse JWKS interno.
 A API containerizada também depende de Postgres e das filas
-provisionadas pelo Terraform local. Para uma demonstração apenas de
-Auth, iniciar a API diretamente no host evita a necessidade do
-emulador SQS.
+provisionadas pelo Terraform local. Para o stack completo, configure
+`AWS_EMULATOR_IMAGE=ministackorg/ministack:1.5.40` (ou um token válido
+para LocalStack) no `.env`, e execute
+`docker compose --profile auth up --build -d`. Sem `--profile auth`,
+o Keycloak não inicia e endpoints protegidos falham fechados. Para uma
+demonstração apenas de Auth, iniciar a API diretamente no host evita a
+necessidade do emulador SQS.
 
 O console Keycloak está em <http://localhost:8080/admin>, com usuário
 `admin` e senha dev configurada em `KEYCLOAK_ADMIN_PASSWORD`. Realm:
 `wagering`. Não existem usuários cadastrados pelo nosso backend.
+
+**Importante:** Keycloak importa o realm somente quando ele ainda não existe.
+Se alterar secrets/clientes no `.env` após a primeira inicialização, o
+volume `keycloak_dev_data` preserva os valores anteriores; altere o client
+pelo console de administração ou recrie **somente** o volume de Keycloak
+com ciência de que isso apaga o realm de desenvolvimento. Não use
+`docker compose down -v` para resetar Keycloak: também apagaria Postgres.
 
 ### Obter access token
 
@@ -164,6 +181,7 @@ processo administrativo próprio, fora do timebox do desafio.
 | `OIDC_JWKS_URL` | JWKS alcançável pela API; `localhost` no host, `keycloak` no Compose |
 | `OIDC_AUDIENCE` | `wagering-api` |
 | `OIDC_METRICS_CLIENT_ID` | `wagering-monitor` |
+| `OIDC_PROVIDER_CLIENT_IDS` | Lista de clients financeiros permitidos; obrigatória em produção, padrão local `provider-a,provider-b` |
 | `KEYCLOAK_PORT` | Porta host, 8080 por padrão; atualizar `OIDC_ISSUER` se mudar |
 | `KEYCLOAK_PROVIDER_A_SECRET` | Secret do confidential client A (dev) |
 | `KEYCLOAK_PROVIDER_B_SECRET` | Secret do confidential client B (dev) |
@@ -179,7 +197,8 @@ versionado ou da configuração do realm de desenvolvimento.
 - `401 UNAUTHORIZED`: token ausente, inválido, expirado,
   issuer/aud errados ou `azp` inválido.
 - `403 FORBIDDEN`: JWT válido porém provider diferente do body/URL,
-  wallet sem grant, ou client não autorizado a métricas.
+  client operacional tentando acessar recursos financeiros, wallet sem
+  grant, ou client não autorizado a métricas.
 - `503 INFRASTRUCTURE_UNAVAILABLE`: IdP/JWKS indisponível durante
   validação de chave desconhecida/expirada.
 - `HTTP_AUTH_MODE=disabled` com `NODE_ENV=production` **não**
@@ -188,8 +207,13 @@ versionado ou da configuração do realm de desenvolvimento.
 ## Produção e EKS
 
 Usar Keycloak externo com HTTPS, storage durável e alta disponibilidade.
-Configurar `OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, segredos
-de cursor e acesso IAM às filas via configuração segura do deployment.
+Configurar `OIDC_ISSUER`, `OIDC_JWKS_URL`, `OIDC_AUDIENCE`,
+`OIDC_PROVIDER_CLIENT_IDS`, segredo de cursor compartilhado de 32+
+caracteres e acesso IAM às filas via configuração segura do deployment.
+O scaffold `infra/terraform/eks-app` **ainda não injeta essas variáveis
+OIDC nem o segredo do cursor**: completar a integração com Secret Manager
+antes de implantar na AWS. A implementação atual é validada localmente
+e na CI, não é um deploy EKS pronto.
 `start-dev`, H2 e secrets de exemplo não são arquitetura de produção.
 Em produção, o container espera `NODE_ENV=production`.
 

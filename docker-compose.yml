@@ -8,6 +8,7 @@ x-app-env: &app-env
   OIDC_JWKS_URL: ${OIDC_JWKS_URL:-http://keycloak:8080/realms/wagering/protocol/openid-connect/certs}
   OIDC_AUDIENCE: ${OIDC_AUDIENCE:-wagering-api}
   OIDC_METRICS_CLIENT_ID: ${OIDC_METRICS_CLIENT_ID:-wagering-monitor}
+  OIDC_PROVIDER_CLIENT_IDS: ${OIDC_PROVIDER_CLIENT_IDS:-provider-a,provider-b}
   PAGINATION_CURSOR_SECRET: ${PAGINATION_CURSOR_SECRET:-local-only-not-for-production}
   DB_HOST: postgres
   DB_PORT: "5432"

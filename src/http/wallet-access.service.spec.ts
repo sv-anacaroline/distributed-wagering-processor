@@ -40,6 +40,20 @@ describe('provider-to-wallet grants', () => {
       else process.env.HTTP_AUTH_MODE = previousAuth;
     }
   });
+  it('does not allow the monitoring OAuth client to use an otherwise valid wallet grant', async () => {
+    const old = process.env.HTTP_AUTH_MODE;
+    process.env.HTTP_AUTH_MODE = 'oidc';
+    try {
+      const { service, calls } = check([{ allowed: 1 }]);
+      await expect(service.assertAllowed('wallet-id', 'wagering-monitor')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(calls).toHaveLength(0);
+    } finally {
+      if (old === undefined) delete process.env.HTTP_AUTH_MODE;
+      else process.env.HTTP_AUTH_MODE = old;
+    }
+  });
   it('allows explicit local bypass but not in production', async () => {
     process.env.HTTP_AUTH_MODE = 'disabled';
     process.env.NODE_ENV = 'test';

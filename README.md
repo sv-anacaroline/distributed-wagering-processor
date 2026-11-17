@@ -141,7 +141,9 @@ ordenação, os índices utilizados e o diagnóstico de contenção.
 O projeto integra **Keycloak** (IdP externo), usando OAuth2
 `client_credentials` para `provider-a`, `provider-b` e
 `wagering-monitor`. A API valida assinatura RS256, `iss`, `aud`
-e `azp` dos access tokens. Não há usuários/senhas locais.
+e `azp` dos access tokens. Somente os OAuth clients de
+`OIDC_PROVIDER_CLIENT_IDS` podem executar operações financeiras;
+`wagering-monitor` acessa apenas métricas. Não há usuários/senhas locais.
 
 ```bash
 cp .env.example .env
@@ -156,8 +158,9 @@ concessão explícita; health checks continuam públicos.
 
 **[Instruções de Keycloak, tokens, .env, permissões e E2E](docs/AUTH.md)**
 
-O PR de eventos SQS é independente; a seção 2 considera SQS canal
-interno confiável e preserva as validações de provider no domínio.
+Os workers SQS/Outbox já fazem parte da `master`. A seção 2 define
+SQS como canal interno confiável; a identidade declarada no envelope
+continua sujeita às validações de domínio.
 
 ## API REST (Seção 9)
 
@@ -167,7 +170,9 @@ consultas por ID interno/externo, reconciliação e health checks.
 O código HTTP reutiliza `ProcessWager`: não há segunda implementação
 de saldo/idempotência.
 
-Em desenvolvimento, escolha explicitamente `HTTP_AUTH_MODE=disabled`.
+Para testes sem IdP, use explicitamente `HTTP_AUTH_MODE=disabled`
+somente em desenvolvimento. Para testar autenticação real, use o perfil
+`auth` do Compose e siga o guia de Keycloak.
 Em produção, configure um IdP OIDC RS256/JWKS; a aplicação não implementa
 senhas ou sessões próprias. `/health/*` é público.
 
@@ -199,14 +204,15 @@ Edite o `.env`:
 Não versione o arquivo `.env`, tokens, credenciais ou arquivos de estado do Terraform.
 
 ```bash
-docker compose config
-docker compose up --build -d
-docker compose ps
-docker compose logs terraform-local
-curl http://localhost:3000/
+docker compose --profile auth config
+docker compose --profile auth up --build -d
+docker compose --profile auth ps
+docker compose --profile auth logs terraform-local
+curl http://localhost:3000/health/live
 ```
 
-O Compose inicia **API Bun, PostgreSQL 17, emulador AWS e job de Terraform** que cria:
+Com `--profile auth`, o Compose inicia **API Bun, Keycloak, PostgreSQL 17,
+emulador AWS e job de Terraform** que cria:
 
 - `wager-transactions.fifo` (fila de entrada).
 - `wager-transactions-dlq.fifo` (dead-letter queue).

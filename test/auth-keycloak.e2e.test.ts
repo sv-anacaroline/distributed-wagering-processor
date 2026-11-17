@@ -168,6 +168,16 @@ suite('Keycloak client credentials — real HTTP authorization and PostgreSQL', 
   });
 
   it('restricts operational metrics to the dedicated monitoring client', async () => {
+    // The monitoring service is authenticated but NOT a financial provider.
+    await request(http)
+      .post('/wallets')
+      .set('Authorization', 'Bearer ' + monitorToken)
+      .send({ playerId: randomUUID(), initialBalance: { amount: '1.00', currency: 'BRL' } })
+      .expect(403);
+    await request(http)
+      .get('/wallets/' + randomUUID())
+      .set('Authorization', 'Bearer ' + monitorToken)
+      .expect(403);
     await request(http)
       .get('/internal/metrics')
       .set('Authorization', 'Bearer ' + aToken)

@@ -15,7 +15,10 @@ LocalStack emulates the AWS API; **it does not provide an actual EKS cluster**. 
 
 ### Boundaries
 
-- The current NestJS starter has **no actual PostgreSQL or SQS application integration**.
+- NestJS currently integrates PostgreSQL, SQS FIFO/Outbox and Keycloak OIDC locally.
+- The EKS Terraform example is **not production-ready**: it does not yet inject
+  the OIDC issuer/JWKS/audience/client allowlist or a secure 32+ character cursor
+  secret. Supply these securely before deploying; never use demo credentials.
 - SQS FIFO deduplication is not a substitute for SQL transactional idempotency.
 - The state is local in the AWS examples. For CI/team usage, move state to encrypted/versioned S3 with appropriate state locking and IAM.
 - The AWS example is intentionally development-oriented (single NAT gateway, single-AZ RDS, limited public EKS control-plane access, no public application ingress). Do not claim production readiness.
@@ -29,11 +32,11 @@ LocalStack emulates the AWS API; **it does not provide an actual EKS cluster**. 
 ```bash
 cp .env.example .env
 # Configure LOCALSTACK_AUTH_TOKEN, or change AWS_EMULATOR_IMAGE to MiniStack.
-docker compose config
-docker compose up --build -d
+docker compose --profile auth config
+docker compose --profile auth up --build -d
 docker compose ps
 docker compose logs terraform-local
-curl http://localhost:3000/
+curl http://localhost:3000/health/live
 ```
 
 The one-shot `terraform-local` service creates three FIFO queues in the emulator, uses Terraform state at `/state/terraform.tfstate`, and stores providers in a dedicated volume. If it fails, inspect the logs and check that the AWS emulator is healthy.
@@ -100,7 +103,7 @@ terraform apply app.tfplan
 kubectl -n wagering rollout status deployment/wagering-api
 kubectl -n wagering get pods
 kubectl -n wagering port-forward service/wagering-api 3000:80
-# In a second shell: curl http://localhost:3000/
+# In a second shell: curl http://localhost:3000/health/live
 ```
 
 The app stack sets Namespace, ServiceAccount, a 3-replica Deployment, and a ClusterIP Service. Pod Identity grants access to the selected SQS queues and RDS-managed secret; a memory-backed volume shares the secret between init and app containers. Replace the temporary `GET /` probes with live/ready endpoints when implemented.

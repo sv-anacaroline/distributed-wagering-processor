@@ -29,10 +29,13 @@ bypass explicitamente configurado em ambiente não produtivo.
 Variáveis obrigatórias no modo seguro:
 
 - `OIDC_ISSUER`: issuer exato do token, por exemplo
-  `http://keycloak:8080/realms/wagering`
+  `http://localhost:8080/realms/wagering` no ambiente
+  local (o `iss` assinado é o endereço externo, não o hostname Docker)
 - `OIDC_JWKS_URL`: endpoint JWKS publicado pelo IdP, por exemplo
   `http://keycloak:8080/realms/wagering/protocol/openid-connect/certs`
 - `OIDC_AUDIENCE`: identificador desta API, por exemplo `wagering-api`
+- `OIDC_PROVIDER_CLIENT_IDS`: OAuth client IDs autorizados a operar
+  wallets e wagers; em produção deve estar explicitamente configurado
 - `PAGINATION_CURSOR_SECRET`: segredo **compartilhado** entre instâncias,
   32+ caracteres em produção. Rotacione com planejamento: cursores
   emitidos antes da troca deixam de ser aceitos.
@@ -45,6 +48,8 @@ de wallet/ledger/reconciliation e wagering validam também o
 grant persistente `wallet_provider_grants` antes de retornar dados
 financeiros. O acesso multi-provider exige concessão explícita de
 um operador. `/internal/metrics` exige `wagering-monitor`.
+O cliente `wagering-monitor` é autorizado apenas em `/internal/metrics`,
+nunca como provedor financeiro, mesmo com JWT válido.
 Cache JWKS por 5 minutos contém só **chaves públicas**, não saldos
 nem dados de idempotência. Ver [AUTH.md](AUTH.md).
 

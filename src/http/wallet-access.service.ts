@@ -1,6 +1,7 @@
 import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { EntityManager as CoreEntityManager } from '@mikro-orm/core';
 import type { EntityManager } from '@mikro-orm/postgresql';
+import { assertFinancialProviderIdentity } from './oidc.guard.js';
 
 /** HTTP-only authorization. Internal trusted SQS commands retain domain checks. */
 export function isLocalAuthBypass(): boolean {
@@ -13,7 +14,7 @@ export class WalletAccessService {
 
   async assertAllowed(walletId: string, providerId?: string): Promise<void> {
     if (isLocalAuthBypass()) return;
-    if (!providerId) throw new ForbiddenException('Authenticated provider is required');
+    assertFinancialProviderIdentity(providerId);
     const granted = await this.em.fork().execute<Array<{ allowed: number }>>(
       `select 1 as allowed from wallet_provider_grants
        where wallet_id=?::uuid and provider_id=? limit 1`,

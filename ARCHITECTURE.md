@@ -25,7 +25,9 @@ de usuários/senhas nem endpoints de login.
 expiry/nbf e `azp`. A identidade no body/URL do wagering tem de
 ser igual ao `azp` assinado. Guard falha fechado em produção.
 `/health/live` e `/health/ready` ficam sem autenticação.
-Métricas globais são reservadas ao client operacional.
+Métricas globais são reservadas ao client operacional. Os recursos
+financeiros exigem um OAuth client listado em `OIDC_PROVIDER_CLIENT_IDS`;
+`wagering-monitor` é explicitamente proibido, mesmo com JWT válido.
 
 `wallet_provider_grants(wallet_id,provider_id)` permite autorizar
 vários providers para uma wallet mantendo `UNIQUE(player_id,currency)`.

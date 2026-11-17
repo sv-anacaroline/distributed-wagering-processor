@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import {
   assertMetricsIdentity,
+  assertFinancialProviderIdentity,
   assertProviderIdentity,
   OidcAuthGuard,
   verifyOidcJwt,
@@ -66,6 +67,28 @@ describe('OIDC JWT verification', () => {
       { aud: 'other-api' },
     ]) {
       expect(() => verify(token(claims))).toThrow(UnauthorizedException);
+    }
+  });
+  it('authorizes only configured financial OAuth clients, never the monitoring client', () => {
+    const mode = process.env.HTTP_AUTH_MODE;
+    const ids = process.env.OIDC_PROVIDER_CLIENT_IDS;
+    process.env.HTTP_AUTH_MODE = 'oidc';
+    process.env.OIDC_PROVIDER_CLIENT_IDS = 'provider-a,provider-b,wagering-monitor';
+    try {
+      expect(() => assertFinancialProviderIdentity('provider-a')).not.toThrow();
+      expect(() => assertFinancialProviderIdentity('provider-b')).not.toThrow();
+      expect(() => assertFinancialProviderIdentity('wagering-monitor')).toThrow(
+        ForbiddenException,
+      );
+      expect(() => assertFinancialProviderIdentity('unknown-service')).toThrow(
+        ForbiddenException,
+      );
+      expect(() => assertFinancialProviderIdentity()).toThrow(ForbiddenException);
+    } finally {
+      if (mode === undefined) delete process.env.HTTP_AUTH_MODE;
+      else process.env.HTTP_AUTH_MODE = mode;
+      if (ids === undefined) delete process.env.OIDC_PROVIDER_CLIENT_IDS;
+      else process.env.OIDC_PROVIDER_CLIENT_IDS = ids;
     }
   });
   it('rejects mismatched provider access', () => {

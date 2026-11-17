@@ -76,9 +76,31 @@ export function verifyOidcJwt(
   }
   return claims as unknown as OidcClaims;
 }
+/**
+ * Explicit allowlist for financial OAuth clients. The monitoring service can
+ * never open or access wallets even with a signed audience-correct token.
+ * Production MUST configure OIDC_PROVIDER_CLIENT_IDS; an absent list denies all.
+ */
+export function assertFinancialProviderIdentity(authenticatedProvider?: string): void {
+  if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
+  const configured = process.env.OIDC_PROVIDER_CLIENT_IDS;
+  const ids = (configured ?? (process.env.NODE_ENV === 'production' ? '' : 'provider-a,provider-b'))
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    !authenticatedProvider ||
+    authenticatedProvider === (process.env.OIDC_METRICS_CLIENT_ID ?? 'wagering-monitor') ||
+    !ids.includes(authenticatedProvider)
+  ) {
+    throw new ForbiddenException('An authorized financial provider identity is required');
+  }
+}
+
 export function assertProviderIdentity(providerId: string, authenticatedProvider?: string): void {
   if (process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production') return;
-  if (!authenticatedProvider || authenticatedProvider !== providerId) {
+  assertFinancialProviderIdentity(authenticatedProvider);
+  if (authenticatedProvider !== providerId) {
     throw new ForbiddenException('Provider identity does not match token');
   }
 }

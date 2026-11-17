@@ -10,9 +10,8 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { OidcAuthGuard } from './oidc.guard.js';
+import { OidcAuthGuard, assertFinancialProviderIdentity } from './oidc.guard.js';
 import { WalletAccessService } from './wallet-access.service.js';
-import { ForbiddenException } from '@nestjs/common';
 import { WalletService } from './wallet.service.js';
 import { ReconciliationService } from './reconciliation.service.js';
 import { pageLimit, uuidField, walletPayload } from './request-validation.js';
@@ -29,12 +28,7 @@ export class WalletController {
   @Post()
   create(@Body() body: unknown, @Req() req: { authProviderId?: string }) {
     const request = walletPayload(body);
-    if (
-      !req.authProviderId &&
-      !(process.env.HTTP_AUTH_MODE === 'disabled' && process.env.NODE_ENV !== 'production')
-    ) {
-      throw new ForbiddenException('A verified provider client is required');
-    }
+    assertFinancialProviderIdentity(req.authProviderId);
     return this.wallets.create(request.playerId, request.initialBalance, req.authProviderId);
   }
 

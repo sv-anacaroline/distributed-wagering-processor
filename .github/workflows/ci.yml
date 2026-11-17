@@ -136,6 +136,7 @@ jobs:
       OIDC_JWKS_URL: http://localhost:8080/realms/wagering/protocol/openid-connect/certs
       OIDC_AUDIENCE: wagering-api
       OIDC_METRICS_CLIENT_ID: wagering-monitor
+      OIDC_PROVIDER_CLIENT_IDS: provider-a,provider-b
       KEYCLOAK_BASE_URL: http://localhost:8080
       AUTH_E2E: "1"
     steps:
