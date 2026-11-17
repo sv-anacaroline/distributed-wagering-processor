@@ -693,6 +693,47 @@ suite('SQS FIFO + Inbox + transactional Outbox — actual Postgres and emulator'
     ).toBe(2);
   }, 60_000);
 
+  it('claims only the oldest event per wallet across three concurrent publishers', async () => {
+    const w = await wallet();
+    const ordered = await orm.em.execute<Array<{
+      id: string;
+      occurred_at: Date;
+      publication_sequence: string;
+    }>>(
+      `select id,occurred_at,publication_sequence::text as publication_sequence
+       from outbox_messages where aggregate_id=?::uuid order by publication_sequence`,
+      [w.walletId],
+    );
+    expect(ordered).toHaveLength(2);
+    expect(new Date(ordered[0]?.occurred_at ?? 0).getTime()).toBe(
+      new Date(ordered[1]?.occurred_at ?? 0).getTime(),
+    );
+    expect(BigInt(ordered[0]?.publication_sequence ?? '0')).toBeLessThan(
+      BigInt(ordered[1]?.publication_sequence ?? '0'),
+    );
+    const agents = [
+      new OutboxPublisher(orm.em, sqs, eventsUrl, 'claim-A'),
+      new OutboxPublisher(orm.em, sqs, eventsUrl, 'claim-B'),
+      new OutboxPublisher(orm.em, sqs, eventsUrl, 'claim-C'),
+    ];
+    const batches = await Promise.all(agents.map(agent => agent.claim(50)));
+    const claimed = batches.flat();
+    const claimsForWallet = claimed.filter(item => item.aggregate_id === w.walletId);
+    expect(claimsForWallet.map(item => item.id)).toEqual([ordered[0]?.id]);
+    const unique = new Set(claimed.map(item => item.id));
+    expect(unique.size).toBe(claimed.length);
+    for (const [index, agent] of agents.entries()) {
+      for (const item of batches[index] ?? []) await agent.release(item);
+    }
+    expect(await outboxCount(w.walletId)).toBe(0);
+    const stillPending = await orm.em.execute<Array<{ published_at: Date | null }>>(
+      `select published_at from outbox_messages
+       where aggregate_id=?::uuid order by publication_sequence`, [w.walletId],
+    );
+    expect(stillPending).toHaveLength(2);
+    expect(stillPending.every(item => item.published_at === null)).toBe(true);
+  }, 90_000);
+
   it('cooperates across three publishers without double-claiming a wallet event', async () => {
     const wallets = await Promise.all([wallet(), wallet(), wallet()]);
     for (const w of wallets) await processor.process(wager(w));
